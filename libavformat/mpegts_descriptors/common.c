@@ -11,6 +11,7 @@ extern MpegTSDescriptor component_descriptor;
 extern MpegTSDescriptor ca_identifier_descriptor;
 extern MpegTSDescriptor content_descriptor;
 extern MpegTSDescriptor telephone_descriptor;
+extern MpegTSDescriptor multilingual_component_descriptor;
 
 static MpegTSDescriptor* all_descriptors[] = {
     [0x00 ... 0x01] = NULL,
@@ -98,7 +99,7 @@ static MpegTSDescriptor* all_descriptors[] = {
     [MPEGTS_DESCRIPTOR_TAG_MULTILINGUAL_NETWORK_NAME] = NULL,
     [MPEGTS_DESCRIPTOR_TAG_MULTILINGUAL_BOUQUET_NAME] = NULL,
     [MPEGTS_DESCRIPTOR_TAG_MULTILINGUAL_SERVICE_NAME] = NULL,
-    [MPEGTS_DESCRIPTOR_TAG_MULTILINGUAL_COMPONENT] = NULL,
+    [MPEGTS_DESCRIPTOR_TAG_MULTILINGUAL_COMPONENT] = &multilingual_component_descriptor,
     [MPEGTS_DESCRIPTOR_TAG_PRIVATE_DATA_SPECIFIER] = NULL,
     [MPEGTS_DESCRIPTOR_TAG_SERVICE_MOVE] = NULL,
     [MPEGTS_DESCRIPTOR_TAG_SHORT_SMOOTHING_BUFFER] = NULL,
