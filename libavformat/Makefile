@@ -337,7 +337,8 @@ OBJS-$(CONFIG_MPEGTS_DEMUXER)            += mpegts.o mpegts_descriptors/common.o
 											mpegts_descriptors/time_shifted_event.o \
 											mpegts_descriptors/telephone.o \
 											mpegts_descriptors/multilingual_component.o \
-											mpegts_descriptors/private_data_specifier.o
+											mpegts_descriptors/private_data_specifier.o \
+											mpegts_descriptors/short_smoothing_buffer.o
 OBJS-$(CONFIG_MPEGTS_MUXER)              += mpegtsenc.o
 OBJS-$(CONFIG_MPEGVIDEO_DEMUXER)         += mpegvideodec.o rawdec.o
 OBJS-$(CONFIG_MPJPEG_DEMUXER)            += mpjpegdec.o
