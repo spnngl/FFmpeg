@@ -280,7 +280,7 @@ static int linkage_free(MpegTSDescriptor *desc)
 static void mobile_hand_over_linkage_debug(MpegTSLinkageDescriptor *ld)
 {
     MpegTSMobileHandOverLinkage *mhol = ld->link;
-    av_log(NULL, AV_LOG_INFO,
+    av_log(NULL, MPEGTS_DESCRIPTORS_LOG,
             "Mobile hand-over: type (%i), reserved(%i), "
             "origin_type(%i), network_id(%i), initial_service_id(%i)\n",
             mhol->hand_over_type, mhol->reserved_future_use,
@@ -290,7 +290,7 @@ static void mobile_hand_over_linkage_debug(MpegTSLinkageDescriptor *ld)
 static void event_linkage_debug(MpegTSLinkageDescriptor *ld)
 {
     MpegTSEventLinkage *ev_link = ld->link;
-    av_log(NULL, AV_LOG_INFO,
+    av_log(NULL, MPEGTS_DESCRIPTORS_LOG,
             "Event linkage: target_event_id(%i), target_listed(%i), "
             "event_simulcast(%i), reserved(%i)\n",
             ev_link->target_event_id, ev_link->target_listed,
@@ -304,7 +304,7 @@ static void extended_event_linkage_debug(MpegTSLinkageDescriptor *ld)
 
     while(head) {
         MpegTSEELDescription *eeld = head->data;
-        av_log(NULL, AV_LOG_INFO, "Extended event linkage: "
+        av_log(NULL, MPEGTS_DESCRIPTORS_LOG, "Extended event linkage: "
                 "target_event_id(%i), target_listed(%i), "
                 "event_simulcast(%i), link_type(%i), "
                 "target_id_type(%i), original_network_id_flag(%i), "
@@ -321,7 +321,7 @@ static void linkage_debug(MpegTSDescriptor *desc)
 {
     if (desc->priv) {
         MpegTSLinkageDescriptor *ld = desc->priv;
-        av_log(NULL, AV_LOG_INFO, "Linkage descriptor: transport_stream_id(%i), "
+        av_log(NULL, MPEGTS_DESCRIPTORS_LOG, "Linkage descriptor: transport_stream_id(%i), "
                "original_network_id(%i), service_id(%i), linkage_type(%i), "
                "private_data(%s)\n",
                ld->transport_stream_id, ld->original_network_id, ld->service_id,

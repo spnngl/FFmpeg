@@ -42,9 +42,9 @@ static void ca_identifier_debug(MpegTSDescriptor *desc)
     if (desc->priv) {
         MpegTSCAIdentifierDescriptor *caid = desc->priv;
 
-        av_log(NULL, AV_LOG_INFO, "CA identifier descriptor: ");
+        av_log(NULL, MPEGTS_DESCRIPTORS_LOG, "CA identifier descriptor: ");
         for(int i = 0; i < caid->nb_ids; i++)
-            av_log(NULL, AV_LOG_INFO, "id #%i: %i\n", i, caid->ca_system_id[i]);
+            av_log(NULL, MPEGTS_DESCRIPTORS_LOG, "id #%i: %i\n", i, caid->ca_system_id[i]);
     }
 }
 

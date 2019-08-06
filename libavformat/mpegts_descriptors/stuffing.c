@@ -37,7 +37,7 @@ static void stuffing_debug(MpegTSDescriptor *desc)
 {
     if (desc->priv) {
         MpegTSStuffingDescriptor *stuff = desc->priv;
-        av_log(NULL, AV_LOG_INFO, "Stuffing descriptor: bytes(%s)\n",
+        av_log(NULL, MPEGTS_DESCRIPTORS_LOG, "Stuffing descriptor: bytes(%s)\n",
                stuff->stuffing_bytes);
     }
 }

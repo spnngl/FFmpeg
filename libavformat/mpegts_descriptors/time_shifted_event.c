@@ -39,7 +39,7 @@ static void time_shifted_event_debug(MpegTSDescriptor *desc)
 {
     if (desc->priv) {
         MpegTSTimeShiftedEventDescriptor *tsed = desc->priv;
-        av_log(NULL, AV_LOG_INFO, "Time shifted event descriptor: "
+        av_log(NULL, MPEGTS_DESCRIPTORS_LOG, "Time shifted event descriptor: "
                 "reference_service_id(%i), reference_event_id(%i)\n",
                 tsed->reference_service_id, tsed->reference_event_id);
     }

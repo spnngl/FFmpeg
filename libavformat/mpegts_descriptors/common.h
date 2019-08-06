@@ -4,6 +4,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#define MPEGTS_DESCRIPTORS_LOG AV_LOG_TRACE
+
 #define bit_mask(x) ((unsigned)(1 << x) - 1)
 
 struct SimpleLinkedList {

@@ -59,7 +59,7 @@ static void parental_rating_debug(MpegTSDescriptor *desc)
         for (int i = 0; i < prd->nb_descriptions; i++) {
             MpegTSParentalRatingDescription *d = prd->descriptions[i];
             char *min_age = mpegts_parental_rating_min_age(d);
-            av_log(NULL, AV_LOG_INFO, "Parental rating #%i: country_code(%.3s), "
+            av_log(NULL, MPEGTS_DESCRIPTORS_LOG, "Parental rating #%i: country_code(%.3s), "
                    "rating(%i) -> min_age = %s\n", i, d->country_code,
                    d->rating, min_age);
             av_free(min_age);

@@ -74,12 +74,12 @@ static void multilingual_component_debug(MpegTSDescriptor *desc)
         MpegTSMultilingualComponentDescriptor *mcd = desc->priv;
         SimpleLinkedList *head = mcd->descriptions;
 
-        av_log(NULL, AV_LOG_INFO, "Multi-lingual component descriptor: "
+        av_log(NULL, MPEGTS_DESCRIPTORS_LOG, "Multi-lingual component descriptor: "
                "component_tag(%i)\n", mcd->component_tag);
 
         while (head) {
             MpegTSMultilingualComponentDescription *d = head->data;
-            av_log(NULL, AV_LOG_INFO, "Multi-lingual description #%i: "
+            av_log(NULL, MPEGTS_DESCRIPTORS_LOG, "Multi-lingual description #%i: "
                    "iso_639_language_code(%.3s), text(%s)\n", count++,
                    d->iso_639_language_code, d->text);
             head = head->next;

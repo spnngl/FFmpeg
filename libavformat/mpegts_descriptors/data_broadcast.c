@@ -70,7 +70,7 @@ static void data_broadcast_debug(MpegTSDescriptor *desc)
 {
     if (desc->priv) {
         MpegTSDataBroadcastDescriptor *dbd = desc->priv;
-        av_log(NULL, AV_LOG_INFO, "Data broadcast descriptor: id(%i), component_tag(%i), "
+        av_log(NULL, MPEGTS_DESCRIPTORS_LOG, "Data broadcast descriptor: id(%i), component_tag(%i), "
                "selector(%s), iso_639_language_code(%.3s), text(%s)\n",
                dbd->data_broadcast_id, dbd->component_tag, dbd->selector,
                dbd->iso_639_language_code, dbd->text);

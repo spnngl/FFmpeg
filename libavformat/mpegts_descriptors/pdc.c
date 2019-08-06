@@ -80,7 +80,7 @@ static void pdc_debug(MpegTSDescriptor *desc)
         MpegTSPDCDescriptor *pdc = desc->priv;
 
         mpegts_pdc_date_str(pdc->programme_identification_label, date);
-        av_log(NULL, AV_LOG_INFO, "PDC descriptor: date(%s)", date);
+        av_log(NULL, MPEGTS_DESCRIPTORS_LOG, "PDC descriptor: date(%s)", date);
     }
 }
 

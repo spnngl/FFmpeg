@@ -512,7 +512,7 @@ static void component_debug(MpegTSDescriptor *desc)
         MpegTSComponentDescriptor *comp = desc->priv;
 
         mpegts_component_description(comp, description);
-        av_log(NULL, AV_LOG_INFO, "Component descriptor: "
+        av_log(NULL, MPEGTS_DESCRIPTORS_LOG, "Component descriptor: "
                 "stream_content_ext(%i), stream_content(%i), "
                 "component_type(%i), description(%s), component_tag(%i), "
                 "iso_639_language_code(%.3s), text(%s)\n",

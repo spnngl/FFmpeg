@@ -4,11 +4,16 @@
 #include <stdint.h>
 
 struct MpegTSComponentDescriptor {
+    /** Stream_content{,ext} and component_type specify the type of stream */
     uint8_t stream_content_ext :4;
     uint8_t stream_content :4;
     uint8_t component_type;
+    /** Has the same value as the component_tag field in the stream identifier
+     * descriptor */
     uint8_t component_tag;
+    /** Three character language code */
     char iso_639_language_code[3];
+    /** Text description of the component stream */
     char *text;
 } __attribute__((packed));
 typedef struct MpegTSComponentDescriptor MpegTSComponentDescriptor;

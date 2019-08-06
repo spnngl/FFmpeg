@@ -7,7 +7,10 @@ typedef struct MpegTSParentalRatingDescriptor MpegTSParentalRatingDescriptor;
 typedef struct MpegTSParentalRatingDescription MpegTSParentalRatingDescription;
 
 struct MpegTSParentalRatingDescription {
+    /** Identify a country or group of countries */
     char country_code[3];
+    /** Coded rating, use @mpegts_parental_rating_min_age() to have the minimum
+     * age */
     uint8_t rating;
 } __attribute__((packed));
 

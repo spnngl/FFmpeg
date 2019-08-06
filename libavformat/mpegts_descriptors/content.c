@@ -242,11 +242,11 @@ static void content_debug(MpegTSDescriptor *desc)
     if (desc->priv) {
         MpegTSContentDescriptor *content = desc->priv;
 
-        av_log(NULL, AV_LOG_INFO, "Content descriptor: \n");
+        av_log(NULL, MPEGTS_DESCRIPTORS_LOG, "Content descriptor: \n");
 
         for(int i = 0; i < content->nb_descriptions; i++) {
             MpegTSContentDescription *d = content->descriptions[i];
-            av_log(NULL, AV_LOG_INFO, "Content #%i: "
+            av_log(NULL, MPEGTS_DESCRIPTORS_LOG, "Content #%i: "
                     "nibble1(%i), nibble2(%i), user_byte(%i), title(%s), "
                     "description(%s)\n", i, d->content_nibble_lvl_1,
                     d->content_nibble_lvl_2, d->user_byte,

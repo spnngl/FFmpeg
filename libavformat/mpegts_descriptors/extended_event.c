@@ -107,14 +107,14 @@ static void extended_event_debug(MpegTSDescriptor *desc)
         MpegTSExtendedEventDescriptor *event = desc->priv;
         SimpleLinkedList *head;
 
-        av_log(NULL, AV_LOG_INFO, "Extended event: number(%i), last_number(%i), "
+        av_log(NULL, MPEGTS_DESCRIPTORS_LOG, "Extended event: number(%i), last_number(%i), "
                "iso_639_language_code(%.3s), length_of_items(%i), text_len(%i), "
                "text(%s)\n",event->number, event->last_number, event->iso_639_language_code,
                event->length_of_items, event->text_len, event->text);
 
         for (head = event->descriptions; head; head = head->next) {
             MpegTSExtendedEventDescription *d = head->data;
-            av_log(NULL, AV_LOG_INFO, "Description #%i: item_description_length(%i), "
+            av_log(NULL, MPEGTS_DESCRIPTORS_LOG, "Description #%i: item_description_length(%i), "
                    "descr(%s), item_length(%i), item(%s)", count++,
                    d->item_description_length, d->descr, d->item_length, d->item);
         }

@@ -78,7 +78,7 @@ static void short_smoothing_buffer_debug(MpegTSDescriptor *desc)
 {
     if (desc->priv) {
         MpegTSShortSmoothingBufferDescriptor *ssb = desc->priv;
-        av_log(NULL, AV_LOG_INFO, "Short smoothing buffer descriptor: "
+        av_log(NULL, MPEGTS_DESCRIPTORS_LOG, "Short smoothing buffer descriptor: "
                "sb_size(%s), sb_leak_rate(%s), DVB_reserved(%s)\n",
                mpegts_sb_size_str(ssb->sb_size),
                mpegts_sb_leak_rate_str(ssb->sb_leak_rate),

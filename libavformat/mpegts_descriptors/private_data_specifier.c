@@ -37,7 +37,7 @@ static void private_data_specifier_debug(MpegTSDescriptor *desc)
 {
     if (desc->priv) {
         MpegTSPrivateDataSpecifierDescriptor *pds = desc->priv;
-        av_log(NULL, AV_LOG_INFO, "Private data specifier descriptor: "
+        av_log(NULL, MPEGTS_DESCRIPTORS_LOG, "Private data specifier descriptor: "
                "specifier(%i)\n", pds->specifier);
     }
 }

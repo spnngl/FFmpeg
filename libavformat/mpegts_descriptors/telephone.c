@@ -85,7 +85,7 @@ static void telephone_debug(MpegTSDescriptor *desc)
 {
     if (desc->priv) {
         MpegTSTelephoneDescriptor *tel = desc->priv;
-        av_log(NULL, AV_LOG_INFO, "Telephone descriptor: foreign_availability(%i), "
+        av_log(NULL, MPEGTS_DESCRIPTORS_LOG, "Telephone descriptor: foreign_availability(%i), "
                "connection_type(%i), country_prefix(%s), international_area_code(%s), "
                "operator_code(%s), national_area_code(%s), core_number(%s)",
                tel->foreign_availability, tel->connection_type, tel->country_prefix,

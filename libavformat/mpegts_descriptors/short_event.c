@@ -61,7 +61,7 @@ static void short_event_debug(MpegTSDescriptor *desc)
 {
     if (desc->priv) {
         MpegTSShortEventDescriptor *short_event = desc->priv;
-        av_log(NULL, AV_LOG_INFO, "Short event: iso_639_language_code(%.3s), "
+        av_log(NULL, MPEGTS_DESCRIPTORS_LOG, "Short event: iso_639_language_code(%.3s), "
                "event_name(%s), text(%s)\n", short_event->iso_639_language_code,
                short_event->event_name, short_event->text);
     }
