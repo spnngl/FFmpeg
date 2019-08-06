@@ -33,6 +33,7 @@
 #include "libavcodec/opus.h"
 #include "avformat.h"
 #include "mpegts.h"
+#include "mpegts_epg.h"
 #include "internal.h"
 #include "avio_internal.h"
 #include "mpeg.h"
@@ -168,6 +169,10 @@ struct MpegTSContext {
     /** filters for various streams specified by PMT + for the PAT and PMT */
     MpegTSFilter *pids[NB_PID_MAX];
     int current_pid;
+
+    // First SimpleLinkedList id is transport_stream_id,
+    // second id is original_network_id, third id is event_id.
+    SimpleLinkedList *epg;
 };
 
 #define MPEGTS_OPTIONS \
@@ -652,6 +657,21 @@ static int skip_identical(const SectionHeader *h, MpegTSSectionFilter *tssf)
     tssf->last_crc = tssf->crc;
 
     return 0;
+}
+
+static const char* const all_running_status[8] = {
+    [0] = "undefined\0",
+    [1] = "not running\0",
+    [2] = "starts in a few seconds (e.g. for video recording)\0",
+    [3] = "pausing\0",
+    [4] = "running\0",
+    [5] = "service off-air\0",
+    [6 ... 7] = "reserved for future use\0",
+};
+
+const char* mpegts_running_status_str(const uint8_t running_status)
+{
+    return (running_status < 8) ? all_running_status[running_status] : "null";
 }
 
 int mpegts_get8(const uint8_t **pp, const uint8_t *p_end)
@@ -2587,6 +2607,106 @@ static void sdt_cb(MpegTSFilter *filter, const uint8_t *section, int section_len
     }
 }
 
+static void eit_cb(MpegTSFilter *filter, const uint8_t *section, int section_len)
+{
+    MpegTSContext *ts = filter->u.section_filter.opaque;
+    MpegTSSectionFilter *tssf = &filter->u.section_filter;
+    const uint8_t *p, *p_end, *desc_list_end, *desc_end;
+    SectionHeader h1, *h = &h1;
+    int val;
+    uint16_t transport_stream_id, original_network_id;
+    //uint8_t segment_last_section_number, last_table_id;
+
+    av_log(ts->stream, AV_LOG_TRACE, "EIT:\n");
+    hex_dump_debug(ts->stream, section, section_len);
+
+    p_end = section + section_len - 4;
+    p     = section;
+
+    if (parse_section_header(h, &p, p_end) < 0)
+        return;
+    if (h->tid < EIT_TID || h->tid > OEITS_END_TID)
+        return;
+    if (ts->skip_changes)
+        return;
+    if (skip_identical(h, tssf))
+        return;
+
+    val = mpegts_get16(&p, p_end);
+    if (val < 0)
+        return;
+    transport_stream_id = val;
+
+    val = mpegts_get16(&p, p_end);
+    if (val < 0)
+        return;
+    original_network_id = val;
+
+#if 1
+    p += 2;
+#else
+    val = mpegts_get8(&p, p_end);
+    if (val < 0)
+        return;
+    segment_last_section_number = val;
+
+    val = mpegts_get8(&p, p_end);
+    if (val < 0)
+        return;
+    last_table_id = val;
+#endif
+
+    while (p < p_end) {
+        EPGEvent *event;
+        uint16_t descr_loop_len;
+
+        val = mpegts_get16(&p, p_end);
+        if (val < 0)
+            break;
+
+        event = epg_get_event(&ts->epg, transport_stream_id, original_network_id, val);
+
+        memcpy(event->start_time, p, 5);
+        p += 5;
+
+        memcpy(event->duration, p, 3);
+        p += 3;
+
+        val = mpegts_get16(&p, p_end);
+        if (val < 0)
+            break;
+        event->running_status = (val >> 13);
+        event->free_ca_mode = (val >> 12) & bit_mask(1);
+        descr_loop_len = val & bit_mask(12);
+
+        desc_list_end = p + descr_loop_len;
+
+        for (;;) {
+            MpegTSDescriptor *desc;
+            MpegTSDescriptorHeader h;
+
+            if (mpegts_parse_descriptor_header(&h, &p, p_end) < 0)
+                break;
+
+            if (!(desc = mpegts_get_descriptor(&h)))
+                break;
+
+            desc_end = p + h.len;
+            if (desc_end > desc_list_end)
+                break;
+
+            if (epg_handle_descriptor(&h, desc, event, &p, desc_end) < 0)
+                break;
+
+            p = desc_end;
+            desc->debug(desc);
+            desc->free(desc);
+        }
+        p = desc_list_end;
+        //epg_event_show(event, AV_LOG_WARNING);
+    }
+}
+
 static int parse_pcr(int64_t *ppcr_high, int *ppcr_low,
                      const uint8_t *packet);
 
@@ -2989,8 +3109,8 @@ static int mpegts_read_header(AVFormatContext *s)
         seek_back(s, pb, pos);
 
         mpegts_open_section_filter(ts, SDT_PID, sdt_cb, ts, 1);
-
         mpegts_open_section_filter(ts, PAT_PID, pat_cb, ts, 1);
+        mpegts_open_section_filter(ts, EIT_PID, eit_cb, ts, 1);
 
         handle_packets(ts, probesize / ts->raw_packet_size);
         /* if could not find service, enable auto_guess */
@@ -3154,6 +3274,8 @@ static void mpegts_free(MpegTSContext *ts)
     for (i = 0; i < NB_PID_MAX; i++)
         if (ts->pids[i])
             mpegts_close_filter(ts, ts->pids[i]);
+
+    epg_free_all(&ts->epg);
 }
 
 static int mpegts_read_close(AVFormatContext *s)
@@ -3245,8 +3367,10 @@ MpegTSContext *avpriv_mpegts_parse_open(AVFormatContext *s)
     ts->raw_packet_size = TS_PACKET_SIZE;
     ts->stream = s;
     ts->auto_guess = 1;
+    ts->epg = NULL;
     mpegts_open_section_filter(ts, SDT_PID, sdt_cb, ts, 1);
     mpegts_open_section_filter(ts, PAT_PID, pat_cb, ts, 1);
+    mpegts_open_section_filter(ts, EIT_PID, eit_cb, ts, 1);
 
     return ts;
 }

@@ -325,7 +325,7 @@ OBJS-$(CONFIG_MPEG2SVCD_MUXER)           += mpegenc.o
 OBJS-$(CONFIG_MPEG2VIDEO_MUXER)          += rawenc.o
 OBJS-$(CONFIG_MPEG2VOB_MUXER)            += mpegenc.o
 OBJS-$(CONFIG_MPEGPS_DEMUXER)            += mpeg.o
-OBJS-$(CONFIG_MPEGTS_DEMUXER)            += mpegts.o mpegts_descriptors/common.o \
+OBJS-$(CONFIG_MPEGTS_DEMUXER)            += mpegts.o mpegts_epg.o mpegts_descriptors/common.o \
 											mpegts_descriptors/ca_identifier.o \
 											mpegts_descriptors/component.o \
 											mpegts_descriptors/content.o \
