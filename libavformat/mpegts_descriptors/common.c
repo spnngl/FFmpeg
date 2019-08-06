@@ -15,6 +15,7 @@ extern MpegTSDescriptor multilingual_component_descriptor;
 extern MpegTSDescriptor private_data_specifier_descriptor;
 extern MpegTSDescriptor short_smoothing_buffer_descriptor;
 extern MpegTSDescriptor data_broadcast_descriptor;
+extern MpegTSDescriptor pdc_descriptor;
 
 static MpegTSDescriptor* all_descriptors[] = {
     [0x00 ... 0x01] = NULL,
@@ -113,7 +114,7 @@ static MpegTSDescriptor* all_descriptors[] = {
     [MPEGTS_DESCRIPTOR_TAG_DATA_BROADCAST_ID] = NULL,
     [MPEGTS_DESCRIPTOR_TAG_TRANSPORT_STREAM] = NULL,
     [MPEGTS_DESCRIPTOR_TAG_DSNG] = NULL,
-    [MPEGTS_DESCRIPTOR_TAG_PDC] = NULL,
+    [MPEGTS_DESCRIPTOR_TAG_PDC] = &pdc_descriptor,
     [MPEGTS_DESCRIPTOR_TAG_AC3] = NULL,
     [MPEGTS_DESCRIPTOR_TAG_ANCILLARY_DATA] = NULL,
     [MPEGTS_DESCRIPTOR_TAG_CELL_LIST] = NULL,
