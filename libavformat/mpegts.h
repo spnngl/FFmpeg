@@ -148,6 +148,10 @@ typedef struct Mp4Descr {
     SLConfigDescr sl;
 } Mp4Descr;
 
+int mpegts_get8(const uint8_t **pp, const uint8_t *p_end);
+int mpegts_get16(const uint8_t **pp, const uint8_t *p_end);
+int mpegts_get32(const uint8_t **pp, const uint8_t *p_end);
+
 /**
  * Parse an MPEG-2 descriptor
  * @param[in] fc                    Format context (used for logging only)
