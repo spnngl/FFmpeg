@@ -16,6 +16,7 @@ extern MpegTSDescriptor private_data_specifier_descriptor;
 extern MpegTSDescriptor short_smoothing_buffer_descriptor;
 extern MpegTSDescriptor data_broadcast_descriptor;
 extern MpegTSDescriptor pdc_descriptor;
+extern MpegTSDescriptor linkage_descriptor;
 
 static MpegTSDescriptor* all_descriptors[] = {
     [0x00 ... 0x01] = NULL,
@@ -83,7 +84,7 @@ static MpegTSDescriptor* all_descriptors[] = {
     [MPEGTS_DESCRIPTOR_TAG_BOUQUET_NAME] = NULL,
     [MPEGTS_DESCRIPTOR_TAG_SERVICE] = &service_descriptor,
     [MPEGTS_DESCRIPTOR_TAG_COUNTRY_AVAILABILITY] = NULL,
-    [MPEGTS_DESCRIPTOR_TAG_LINKAGE] = NULL,
+    [MPEGTS_DESCRIPTOR_TAG_LINKAGE] = &linkage_descriptor,
     [MPEGTS_DESCRIPTOR_TAG_NVOD_REFERENCE] = NULL,
     [MPEGTS_DESCRIPTOR_TAG_TIME_SHIFTED_REFERENCE] = NULL,
     [MPEGTS_DESCRIPTOR_TAG_SHORT_EVENT] = &short_event_descriptor,
