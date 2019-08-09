@@ -37,7 +37,8 @@
 #define PAT_PID         0x0000 /* Program Association Table */
 #define CAT_PID         0x0001 /* Conditional Access Table */
 #define TSDT_PID        0x0002 /* Transport Stream Description Table */
-/* PID from 0x0003 to 0x000F are reserved */
+#define IPMP_PID        0x0003
+/* PID from 0x0004 to 0x000F are reserved */
 #define NIT_PID         0x0010 /* Network Information Table */
 #define SDT_PID         0x0011 /* Service Description Table */
 #define EIT_PID         0x0012 /* Event Information Table */
@@ -54,6 +55,12 @@
 #define MEASUREMENT_PID 0x001D
 #define DIT_PID         0x001E /* Discontinuity Information Table */
 #define SIT_PID         0x001F /* Selection Information Table */
+/* PID from 0x0020 to 0x1FFA may be assigned as needed to PMT, elementary
+ * streams and other data tables */
+/* PID 0x1FFB is used by DigiCipher 2/ATSC MGT metadata */
+/* PID from 0x1FFC to 0x1FFE may be assigned as needed to PMT, elementary
+ * streams and other data tables */
+#define NULL_PID        0x1FFF /* Null packet (used for fixed bandwidth padding) */
 
 /* table ids */
 #define PAT_TID         0x00 /* Program Association section */
