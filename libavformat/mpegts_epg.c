@@ -1,4 +1,4 @@
-#include "mpegts_epg.h"
+#include "mpegts.h"
 #include "mpegts_descriptors/common.h"
 #include "mpegts_descriptors/service.h"
 #include "mpegts_descriptors/short_event.h"
@@ -68,10 +68,14 @@ static int extended_event_handle(MpegTSDescriptor *desc, EPGEvent *event)
 static int parental_rating_handle(MpegTSDescriptor *desc, EPGEvent *event)
 {
     MpegTSParentalRatingDescriptor *prd = desc->priv;
+    MpegTSParentalRatingDescription *prdd;
 
     // For now we only look at the first age indicated
-    if (prd->nb_descriptions)
-        event->min_age = mpegts_parental_rating_min_age(prd->descriptions[0]);
+    if (prd->nb_descriptions) {
+        prdd = prd->descriptions[0];
+        event->rating = prdd->rating;
+        memcpy(event->country_code, prdd->country_code, 3);
+    }
 
     return 0;
 }
@@ -183,13 +187,14 @@ void epg_event_show(EPGEvent *event, int log_level)
 
     av_log(NULL, log_level, "EPGEvent: id(%i), shift_from_service_id(%i), "
            "shift_from_event_id(%i), start_time(%s), duration(%s), running_status(%s), "
-           "free_ca_mode(%i), min_age(%s), PIL(%s), event_name(%s), short_event_descr(%s), "
+           "free_ca_mode(%i), rating(%i), country_code(%.3s), PIL(%s), event_name(%s), "
+           "short_event_descr(%s), "
            "long_event_descr(%s), items(%s), short_component_description(%s), "
            "long_component_description(%s), short_content_description(%s), "
            "long_content_description(%s), sb_size(%s), sb_leak_rate(%s)\n\n\n",
            event->id, event->shift_from.service_id, event->shift_from.event_id,
            start_time, duration, mpegts_running_status_str(event->running_status),
-           event->free_ca_mode, event->min_age, pil, event->event_name,
+           event->free_ca_mode, event->rating, event->country_code, pil, event->event_name,
            event->short_event_description, event->long_event_description, event->items,
            event->component.short_desc, event->component.long_desc,
            event->content.short_desc, event->content.long_desc,
@@ -257,7 +262,6 @@ EPGEvent* epg_get_event(SimpleLinkedList **epg,
 
 void epg_free_event(EPGEvent *event)
 {
-    av_free(event->min_age);
     av_free(event->event_name);
     av_free(event->short_event_description);
     av_free(event->long_event_description);
@@ -303,10 +307,10 @@ static int epg_event_line_csv(EPGEvent *event, char* dst, const uint16_t transpo
     char *start_time = epg_event_start_time_str(event->start_time);
 
     size = snprintf(
-        dst, EPG_LINE_SIZE, "%i;%i;%i;%s;%s;%s;%i;%s;%s;%s;%s;%s;%s;%s;%s;%s\n",
+        dst, EPG_LINE_SIZE, "%i;%i;%i;%s;%s;%s;%i;%i;%s;%s;%s;%s;%s;%s;%s;%s\n",
         transport_stream_id, original_network_id,
         event->id, start_time, duration, mpegts_running_status_str(event->running_status),
-        event->free_ca_mode, event->min_age, event->event_name, event->short_event_description,
+        event->free_ca_mode, event->rating, event->event_name, event->short_event_description,
         event->long_event_description, event->items, event->component.short_desc,
         event->component.long_desc, event->content.short_desc,
         event->content.long_desc
@@ -327,7 +331,7 @@ void epg_data_to_csv(SimpleLinkedList *epg, const char* path)
     EPGEvent *event;
     SimpleLinkedList *head_tr, *head_or, *head_ev;
     const char* columns = "transport_stream_id;original_network_id;event_id;start_time;"
-                          "duration;running_status;free_ca_mode;min_age;event_name;"
+                          "duration;running_status;free_ca_mode;rating;event_name;"
                           "short_event_description;long_event_description;items;"
                           "short_component_description;long_component_description;"
                           "short_content_description;long_content_description\n\0";

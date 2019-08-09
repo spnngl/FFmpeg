@@ -23,6 +23,7 @@
 #define AVFORMAT_MPEGTS_H
 
 #include "avformat.h"
+#include "mpegts_descriptors/common.h"
 
 #define TS_FEC_PACKET_SIZE 204
 #define TS_DVHS_PACKET_SIZE 192
@@ -159,7 +160,75 @@ int mpegts_get8(const uint8_t **pp, const uint8_t *p_end);
 int mpegts_get16(const uint8_t **pp, const uint8_t *p_end);
 int mpegts_get32(const uint8_t **pp, const uint8_t *p_end);
 
+typedef struct EPGEvent {
+    uint16_t id;
+    // ids <=> [ network_id | TS id | service id | event id ]
+    uint64_t ids;
+    struct {
+        uint16_t service_id;
+        uint16_t event_id;
+    } shift_from;
+    uint8_t start_time[5];
+    uint8_t duration[3];
+    uint8_t running_status :3;
+    uint8_t free_ca_mode :1;
+    uint8_t rating;
+    uint32_t pil :20;
+    char country_code[3];
+    char iso_639_language_code[3];
+    char* event_name;
+    char* short_event_description;
+    char* long_event_description;
+    char* items;
+    uint8_t last_number :4;
+    struct {
+        char* short_desc;
+        char* long_desc;
+    } component;
+    struct {
+        char* short_desc;
+        char* long_desc;
+    } content;
+    struct {
+        uint8_t size :2;
+        uint8_t leak_rate :6;
+    } sb;
+} EPGEvent;
+
+struct EPGData {
+    uint16_t id;
+    SimpleLinkedList *head;
+};
+typedef struct EPGData EPGData;
+
+EPGData* epg_get_data(SimpleLinkedList **epg, const uint16_t id);
+
+EPGEvent* epg_get_event(SimpleLinkedList **epg,
+                        const uint16_t transport_stream_id,
+                        const uint16_t original_network_id,
+                        const uint16_t event_id);
+
+void epg_free_event(EPGEvent *event),
+     epg_free_all(SimpleLinkedList **epg),
+     epg_data_to_csv(SimpleLinkedList *epg, const char* path),
+     epg_event_show(EPGEvent *event, int log_level);
+
+char *epg_bcd_to_str(const uint32_t bcd),
+     *epg_mjd_to_str(const uint16_t mjd),
+     *epg_event_start_time_str(uint8_t start_time[5]),
+     *epg_event_duration_str(uint8_t duration[3]);
+
+int epg_handle_descriptor(MpegTSDescriptorHeader *h, MpegTSDescriptor *desc,
+                          EPGEvent *event, const uint8_t **pp,
+                          const uint8_t *p_end);
+
 const char* mpegts_running_status_str(const uint8_t running_status);
+
+/**
+ * Parse an EPG
+ */
+int ff_parse_epg_event(AVFormatContext *s, AVPacket *pkt, EPGEvent *event);
+//int ff_free_epg_event();
 
 /**
  * Parse an MPEG-2 descriptor
