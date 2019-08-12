@@ -25,6 +25,7 @@ HEADERS = adler32.h                                                     \
           display.h                                                     \
           downmix_info.h                                                \
           encryption_info.h                                             \
+		  epg.h															\
           error.h                                                       \
           eval.h                                                        \
           fifo.h                                                        \
@@ -112,6 +113,7 @@ OBJS = adler32.o                                                        \
        display.o                                                        \
        downmix_info.o                                                   \
        encryption_info.o                                                \
+	   epg.o															\
        error.o                                                          \
        eval.o                                                           \
        fifo.o                                                           \

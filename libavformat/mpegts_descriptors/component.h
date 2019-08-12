@@ -18,6 +18,4 @@ struct MpegTSComponentDescriptor {
 } __attribute__((packed));
 typedef struct MpegTSComponentDescriptor MpegTSComponentDescriptor;
 
-void mpegts_component_description(const MpegTSComponentDescriptor *comp, char* dst);
-
 #endif /* AVFORMAT_MPEGTS_DESCRIPTORS_COMPONENT_H */

@@ -28,6 +28,7 @@
 #include "libavutil/mathematics.h"
 #include "libavutil/opt.h"
 #include "libavutil/avassert.h"
+#include "libavutil/epg.h"
 #include "libavcodec/bytestream.h"
 #include "libavcodec/get_bits.h"
 #include "libavcodec/opus.h"
@@ -677,21 +678,6 @@ static int skip_identical(const SectionHeader *h, MpegTSSectionFilter *tssf)
     tssf->last_crc = tssf->crc;
 
     return 0;
-}
-
-static const char* const all_running_status[8] = {
-    [0] = "undefined\0",
-    [1] = "not running\0",
-    [2] = "starts in a few seconds (e.g. for video recording)\0",
-    [3] = "pausing\0",
-    [4] = "running\0",
-    [5] = "service off-air\0",
-    [6 ... 7] = "reserved for future use\0",
-};
-
-const char* mpegts_running_status_str(const uint8_t running_status)
-{
-    return (running_status < 8) ? all_running_status[running_status] : "null";
 }
 
 int mpegts_get8(const uint8_t **pp, const uint8_t *p_end)
@@ -2543,6 +2529,8 @@ static void pat_cb(MpegTSFilter *filter, const uint8_t *section, int section_len
     }
 }
 
+int ff_parse_epg_event(AVFormatContext *s, AVPacket *pkt, EPGEvent *event);
+
 static void eit_cb(MpegTSFilter *filter, const uint8_t *section, int section_len)
 {
     MpegTSContext *ts = filter->u.section_filter.opaque;
@@ -2625,56 +2613,6 @@ static void eit_cb(MpegTSFilter *filter, const uint8_t *section, int section_len
             (h->version == eit_info->last_version || h->version == next_version))
         return;
 
-    //while (p < p_end) {
-    //    EPGEvent *event;
-    //    uint16_t descr_loop_len;
-
-    //    val = mpegts_get16(&p, p_end);
-    //    if (val < 0)
-    //        break;
-
-    //    event = epg_get_event(&ts->epg, transport_stream_id, original_network_id, val);
-
-    //    memcpy(event->start_time, p, 5);
-    //    p += 5;
-
-    //    memcpy(event->duration, p, 3);
-    //    p += 3;
-
-    //    val = mpegts_get16(&p, p_end);
-    //    if (val < 0)
-    //        break;
-    //    event->running_status = (val >> 13);
-    //    event->free_ca_mode = (val >> 12) & bit_mask(1);
-    //    descr_loop_len = val & bit_mask(12);
-
-    //    desc_list_end = p + descr_loop_len;
-
-    //    for (;;) {
-    //        MpegTSDescriptor *desc;
-    //        MpegTSDescriptorHeader h;
-
-    //        if (mpegts_parse_descriptor_header(&h, &p, p_end) < 0)
-    //            break;
-
-    //        if (!(desc = mpegts_get_descriptor(&h)))
-    //            break;
-
-    //        desc_end = p + h.len;
-    //        if (desc_end > desc_list_end)
-    //            break;
-
-    //        if (epg_handle_descriptor(&h, desc, event, &p, desc_end) < 0)
-    //            break;
-
-    //        p = desc_end;
-    //        desc->debug(desc);
-    //        desc->free(desc);
-    //    }
-    //    p = desc_list_end;
-    //    //epg_event_show(event, AV_LOG_WARNING);
-    //}
-
     idx = ff_find_stream_index(ts->stream, filter->pid);
     if (idx < 0)
         return;
@@ -2690,7 +2628,10 @@ static void eit_cb(MpegTSFilter *filter, const uint8_t *section, int section_len
     ts->stop_parse = 1;
 
     EPGEvent event;
+    av_epg_init_event(&event);
     ff_parse_epg_event(NULL, ts->pkt, &event);
+
+    av_log(NULL, AV_LOG_TRACE, "Quitting eit_cb()");
 }
 
 int ff_parse_epg_event(AVFormatContext *s, AVPacket *pkt, EPGEvent *event)
@@ -2698,7 +2639,6 @@ int ff_parse_epg_event(AVFormatContext *s, AVPacket *pkt, EPGEvent *event)
     SectionHeader h1, *h = &h1;
     //MpegTSContext *ts = s->priv_data;
     int val;
-    uint16_t transport_stream_id, original_network_id;
     const uint8_t *p, *p_end, *desc_list_end, *desc_end;
 
     if (!event)
@@ -2709,16 +2649,17 @@ int ff_parse_epg_event(AVFormatContext *s, AVPacket *pkt, EPGEvent *event)
 
     if (parse_section_header(h, &p, p_end) < 0)
         return AVERROR_INVALIDDATA;
+    event->service_id = h->id;
 
     val = mpegts_get16(&p, p_end);
     if (val < 0)
         return val;
-    transport_stream_id = val;
+    event->ts_id = val;
 
     val = mpegts_get16(&p, p_end);
     if (val < 0)
         return val;
-    original_network_id = val;
+    event->network_id = val;
 
     // Avoid parsing segment_last_section_number & last_table_id
     p += 2;
@@ -2729,10 +2670,7 @@ int ff_parse_epg_event(AVFormatContext *s, AVPacket *pkt, EPGEvent *event)
         val = mpegts_get16(&p, p_end);
         if (val < 0)
             break;
-        event->id = val;
-        event->ids = ((uint64_t)original_network_id << 48) |
-                     ((uint64_t)transport_stream_id << 32) |
-                     (h->id << 16) | val;
+        event->event_id = val;
 
         memcpy(event->start_time, p, 5);
         p += 5;

@@ -16,7 +16,4 @@ struct MpegTSContentDescriptor {
 };
 typedef struct MpegTSContentDescriptor MpegTSContentDescriptor;
 
-char* mpegts_content_simple_description(MpegTSContentDescription * const content);
-char* mpegts_content_detailed_description(MpegTSContentDescription * const content);
-
 #endif /* AVFORMAT_MPEGTS_DESCRIPTORS_CONTENT_H */
