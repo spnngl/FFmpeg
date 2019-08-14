@@ -325,23 +325,7 @@ OBJS-$(CONFIG_MPEG2SVCD_MUXER)           += mpegenc.o
 OBJS-$(CONFIG_MPEG2VIDEO_MUXER)          += rawenc.o
 OBJS-$(CONFIG_MPEG2VOB_MUXER)            += mpegenc.o
 OBJS-$(CONFIG_MPEGPS_DEMUXER)            += mpeg.o
-OBJS-$(CONFIG_MPEGTS_DEMUXER)            += mpegts.o mpegts_epg.o mpegts_descriptors/common.o \
-											mpegts_descriptors/ca_identifier.o \
-											mpegts_descriptors/component.o \
-											mpegts_descriptors/content.o \
-											mpegts_descriptors/extended_event.o \
-											mpegts_descriptors/parental_rating.o \
-											mpegts_descriptors/service.o \
-											mpegts_descriptors/short_event.o \
-											mpegts_descriptors/stuffing.o \
-											mpegts_descriptors/time_shifted_event.o \
-											mpegts_descriptors/telephone.o \
-											mpegts_descriptors/multilingual_component.o \
-											mpegts_descriptors/private_data_specifier.o \
-											mpegts_descriptors/short_smoothing_buffer.o \
-											mpegts_descriptors/data_broadcast.o \
-											mpegts_descriptors/pdc.o \
-											mpegts_descriptors/linkage.o
+OBJS-$(CONFIG_MPEGTS_DEMUXER)            += mpegts.o
 OBJS-$(CONFIG_MPEGTS_MUXER)              += mpegtsenc.o
 OBJS-$(CONFIG_MPEGVIDEO_DEMUXER)         += mpegvideodec.o rawdec.o
 OBJS-$(CONFIG_MPJPEG_DEMUXER)            += mpjpegdec.o
