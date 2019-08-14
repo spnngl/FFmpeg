@@ -37,6 +37,7 @@ OBJS = ac3_parser.o                                                     \
        dirac.o                                                          \
        dv_profile.o                                                     \
 	   dvbdescriptors.o													\
+	   epgdec.o															\
        encode.o                                                         \
        imgconvert.o                                                     \
        jni.o                                                            \
