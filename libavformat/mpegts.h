@@ -23,8 +23,6 @@
 #define AVFORMAT_MPEGTS_H
 
 #include "avformat.h"
-#include "mpegts_descriptors/common.h"
-//#include "../libavutil/epg.h"
 
 #define TS_FEC_PACKET_SIZE 204
 #define TS_DVHS_PACKET_SIZE 192
@@ -156,18 +154,6 @@ typedef struct Mp4Descr {
     uint8_t *dec_config_descr;
     SLConfigDescr sl;
 } Mp4Descr;
-
-
-typedef struct EPGEvent EPGEvent;
-int epg_handle_descriptor(MpegTSDescriptorHeader *h, MpegTSDescriptor *desc,
-                          EPGEvent *event, const uint8_t **pp,
-                          const uint8_t *p_end);
-
-/**
- * Parse an EPG
- */
-//int ff_parse_epg_event(AVFormatContext *s, AVPacket *pkt, EPGEvent *event);
-//int ff_free_epg_event();
 
 /**
  * Parse an MPEG-2 descriptor

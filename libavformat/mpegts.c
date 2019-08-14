@@ -28,7 +28,6 @@
 #include "libavutil/mathematics.h"
 #include "libavutil/opt.h"
 #include "libavutil/avassert.h"
-#include "libavutil/epg.h"
 #include "libavutil/dvb.h"
 #include "libavcodec/bytestream.h"
 #include "libavcodec/get_bits.h"
@@ -117,23 +116,6 @@ struct Program {
     int pmt_found;
 };
 
-typedef struct EitTidInfo {
-    int last_version;
-    int last_section_num;
-    int last_segment_section_num;
-} EitTidInfo;
-
-typedef struct EITContext {
-    struct EitTidInfo infos[4];
-    int last_sched_table_id;
-    int o_last_sched_table_id;
-} EITContext;
-
-#define max(a,b) \
-   ({ __typeof__ (a) _a = (a); \
-       __typeof__ (b) _b = (b); \
-     _a > _b ? _a : _b; })
-
 struct MpegTSContext {
     const AVClass *class;
     /* user data */
@@ -187,14 +169,6 @@ struct MpegTSContext {
     /** filters for various streams specified by PMT + for the PAT and PMT */
     MpegTSFilter *pids[NB_PID_MAX];
     int current_pid;
-
-    // First SimpleLinkedList id is transport_stream_id,
-    // second id is original_network_id, third id is event_id.
-    //SimpleLinkedList *epg;
-    EITContext *eit;
-    int nb_epg_events;
-    int epg_events_size;
-    EPGEvent **epg_events;
 };
 
 #define MPEGTS_OPTIONS \
@@ -2452,30 +2426,19 @@ static void pat_cb(MpegTSFilter *filter, const uint8_t *section, int section_len
     }
 }
 
-int ff_parse_epg_event(AVFormatContext *s, AVPacket *pkt, EPGEvent *event);
-
 static void eit_cb(MpegTSFilter *filter, const uint8_t *section, int section_len)
 {
     MpegTSContext *ts = filter->u.section_filter.opaque;
     MpegTSSectionFilter *tssf = &filter->u.section_filter;
     const uint8_t *p, *p_end;
-    SectionHeader h1, *h = &h1;
-    int max_last_table_id, val, next_version, idx;
-    uint8_t segment_last_section_number, last_table_id;
+    DvbSectionHeader h1, *h = &h1;
+    int idx;
     AVProgram *prg;
-    EitTidInfo *eit_info;
-
-    // If EIT not signaled in SDT table we do nothing
-    if (!ts->eit)
-        return;
-
-    av_log(ts->stream, AV_LOG_TRACE, "EIT:\n");
-    hex_dump_debug(ts->stream, section, section_len);
 
     p_end = section + section_len - 4;
     p     = section;
 
-    if (parse_section_header(h, &p, p_end) < 0)
+    if (avpriv_dvb_parse_section_header(h, &p, p_end) < 0)
         return;
     if (h->tid < EIT_TID || h->tid > OEITS_END_TID)
         return;
@@ -2484,60 +2447,11 @@ static void eit_cb(MpegTSFilter *filter, const uint8_t *section, int section_len
     if (skip_identical(h, tssf))
         return;
 
-    // Avoid parsing transport_stream_id & original_network_id
-    p += 4;
-
-    val = mpegts_get8(&p, p_end);
-    if (val < 0)
-        return;
-    segment_last_section_number = val;
-
-    val = mpegts_get8(&p, p_end);
-    if (val < 0)
-        return;
-    last_table_id = val;
-
-    // Check eit data
-    switch (h->tid) {
-        case EIT_TID:
-            eit_info = &ts->eit->infos[0];
-            if (last_table_id != EIT_TID || h->last_sec_num != segment_last_section_number)
-                return;
-            break;
-        case OEIT_TID:
-            eit_info = &ts->eit->infos[1];
-            if (last_table_id != OEIT_TID || h->last_sec_num != segment_last_section_number)
-                return;
-            break;
-        case EITS_START_TID ... EITS_END_TID:
-            eit_info = &ts->eit->infos[2];
-            if (segment_last_section_number != h->sec_num)
-                return;
-            max_last_table_id = max(last_table_id, ts->eit->last_sched_table_id);
-            if (last_table_id != max_last_table_id)
-                return;
-            ts->eit->last_sched_table_id = max_last_table_id;
-            break;
-        case OEITS_START_TID ... OEITS_END_TID:
-            eit_info = &ts->eit->infos[3];
-            if (segment_last_section_number != h->sec_num)
-                return;
-            max_last_table_id = max(last_table_id, ts->eit->o_last_sched_table_id);
-            if (last_table_id != max_last_table_id)
-                return;
-            ts->eit->o_last_sched_table_id = max_last_table_id;
-            break;
-        default:
-            return;
-    }
-
-    next_version = (eit_info->last_version == 31) ? 0 : eit_info->last_version + 1;
-    if (eit_info->last_version != (-1) &&
-            (h->version == eit_info->last_version || h->version == next_version))
-        return;
-
     idx = ff_find_stream_index(ts->stream, filter->pid);
     if (idx < 0)
+        return;
+
+    if (!ts->pkt)
         return;
 
     new_data_packet(section, section_len, ts->pkt);
@@ -2606,13 +2520,6 @@ static void sdt_cb(MpegTSFilter *filter, const uint8_t *section, int section_len
 
                 add_pid_to_pmt(ts, sid, EIT_PID);
                 av_program_add_stream_index(ts->stream, sid, st->index);
-
-                ts->eit = av_mallocz(sizeof(EITContext));
-                for (int i = 0; i < 4; i++) {
-                    ts->eit->infos[i].last_version = (-1);
-                }
-                ts->eit->last_sched_table_id = EITS_START_TID;
-                ts->eit->o_last_sched_table_id = OEITS_START_TID;
             }
         }
 
