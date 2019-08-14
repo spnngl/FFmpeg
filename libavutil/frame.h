@@ -179,6 +179,11 @@ enum AVFrameSideDataType {
      * array element is implied by AVFrameSideData.size / AVRegionOfInterest.self_size.
      */
     AV_FRAME_DATA_REGIONS_OF_INTEREST,
+
+    /**
+     * TODO
+     */
+    AV_FRAME_DATA_EPG_EVENT,
 };
 
 enum AVActiveFormatDescription {
