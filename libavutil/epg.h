@@ -28,9 +28,8 @@ typedef struct EPGEvent {
     char iso_639_language_code[3];
     char event_name[256];
     char short_event_description[256];
-    char long_event_description[512];
+    char long_event_description[1024];
     char items[512];
-    uint8_t last_number :4;
     struct {
         uint8_t stream_content_ext :4;
         uint8_t stream_content :4;

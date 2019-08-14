@@ -23,8 +23,6 @@ void av_epg_init_event(EPGEvent *event) {
     memset(event->long_event_description, '\0', 512);
     memset(event->items, '\0', 512);
 
-    event->last_number = 0;
-
     event->component.stream_content_ext = 0;
     event->component.stream_content = 0;
     event->component.type = 0;
