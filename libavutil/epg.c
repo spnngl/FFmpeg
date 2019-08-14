@@ -51,57 +51,37 @@ void av_epg_free_event(EPGEvent **event)
 
 static void epg_show_event(EPGEvent *event, int loglevel)
 {
-    //char* start_time = epg_event_start_time_str(event->start_time);
-    //char* duration = epg_event_duration_str(event->duration);
-    //char pil[32];
-    //mpegts_pdc_date_str(event->pil, pil);
+    char* start_time = av_epg_start_time_to_str(event->start_time);
+    char* duration = av_epg_duration_to_str(event->duration);
+    char* short_content = av_epg_content_simple_str(event);
+    char* long_content = av_epg_content_detailed_str(event);
+    char pil[32];
+    char comp[256];
+    av_epg_pdc_date_str(event->pil, pil);
+    av_epg_component_str(event, comp);
 
-    //av_log(NULL, loglevel, "EPGEvent: id(%i), shift_from_service_id(%i), "
-    //       "shift_from_event_id(%i), start_time(%s), duration(%s), running_status(%s), "
-    //       "free_ca_mode(%i), rating(%i), country_code(%.3s), PIL(%s), event_name(%s), "
-    //       "short_event_descr(%s), "
-    //       "long_event_descr(%s), items(%s), short_component_description(%s), "
-    //       "long_component_description(%s), short_content_description(%s), "
-    //       "long_content_description(%s), sb_size(%s), sb_leak_rate(%s)\n\n\n",
-    //       event->event_id, event->shift_from.service_id, event->shift_from.event_id,
-    //       start_time, duration, mpegts_running_status_str(event->running_status),
-    //       event->free_ca_mode, event->rating, event->country_code, pil, event->event_name,
-    //       event->short_event_description, event->long_event_description, event->items,
-    //       event->component.short_desc, event->component.long_desc,
-    //       event->content.short_desc, event->content.long_desc,
-    //       mpegts_sb_size_str(event->sb.size), mpegts_sb_leak_rate_str(event->sb.leak_rate));
+    av_log(NULL, loglevel, "EPGEvent: id(%i), shift_from_service_id(%i), "
+           "shift_from_event_id(%i), start_time(%s), duration(%s), running_status(%s), "
+           "free_ca_mode(%i), rating(%i), country_code(%.3s), PIL(%s), event_name(%s), "
+           "short_event_descr(%s), "
+           "long_event_descr(%s), items(%s), component_description(%s), "
+           "component_text(%s), short_content_description(%s), "
+           "long_content_description(%s), sb_size(%s), sb_leak_rate(%s)\n\n\n",
+           event->event_id, event->shift_from.service_id, event->shift_from.event_id,
+           start_time, duration, av_epg_running_status(event->running_status),
+           event->free_ca_mode, event->rating, event->country_code, pil, event->event_name,
+           event->short_event_description, event->long_event_description, event->items,
+           comp, event->component.text,
+           short_content, long_content,
+           av_epg_sb_size_str(event->sb.size), av_epg_sb_leak_rate_str(event->sb.leak_rate));
 
-    //av_free(start_time);
-    //av_free(duration);
+    av_free(start_time);
+    av_free(duration);
 }
 
 void av_epg_show_event(EPGEvent *event)
 {
     epg_show_event(event, AV_LOG_DEBUG);
-}
-
-// TODO
-int av_epg_csv_event(EPGEvent *event, char* dst)
-{
-    //int size;
-    //char *duration = epg_event_duration_str(event->duration);
-    //char *start_time = epg_event_start_time_str(event->start_time);
-
-    //size = snprintf(
-    //    dst, EPG_LINE_SIZE, "%i;%i;%i;%s;%s;%s;%i;%i;%s;%s;%s;%s;%s;%s;%s;%s\n",
-    //    transport_stream_id, original_network_id,
-    //    event->event_id, start_time, duration, mpegts_running_status_str(event->running_status),
-    //    event->free_ca_mode, event->rating, event->event_name, event->short_event_description,
-    //    event->long_event_description, event->items, event->component.short_desc,
-    //    event->component.long_desc, event->content.short_desc,
-    //    event->content.long_desc
-    //);
-
-    //av_free(duration);
-    //av_free(start_time);
-
-    //return (size > EPG_LINE_SIZE) ? EPG_LINE_SIZE : size;
-    return 0;
 }
 
 char* av_epg_bcd_to_str(const uint32_t bcd)
@@ -317,4 +297,75 @@ char* av_epg_content_simple_str(EPGEvent *event)
 char* av_epg_content_detailed_str(EPGEvent *event)
 {
     return (char*)detailed_nibbles[event->content.nibble_lvl_1][event->content.nibble_lvl_2];
+}
+
+#include "smoothing_buffer_tables.h"
+
+char* av_epg_sb_size_str(const uint8_t sb_size)
+{
+    return sb_size < 4 ? (char*)smoothing_buffer_size[sb_size] : (char*)"null\0";
+}
+
+char* av_epg_sb_leak_rate_str(const uint8_t sb_leak_rate)
+{
+    return sb_leak_rate < 64 ? (char*)smoothing_buffer_leak_rate[sb_leak_rate] : (char*)"null\0";
+}
+
+char* av_epg_parental_rating_min_age(const uint8_t rating)
+{
+    int size;
+    char *ret;
+
+    switch(rating) {
+        // Defined by broadcaster
+        case 0x10 ... 0xFF:
+        // Undefined value
+        case 0x00:
+            size = sizeof("undefined") + 1;
+            ret = av_malloc(size);
+            memcpy(ret, "undefined\0", size);
+            break;
+        case 0x01 ... 0x0F:
+            ret = av_malloc(3);
+            snprintf(ret, 3, "%d", rating + 3);
+            break;
+        default:
+            ret = NULL;
+            break;
+    }
+    return ret;
+}
+
+int av_epg_pdc_date_str(const uint32_t pil, char* dst)
+{
+    int head = 0, size;
+    char cur[8];
+
+    snprintf(cur, 8, "%i", (pil >> 15));
+    size = strlen(cur);
+    memcpy(dst, cur, size);
+    head += size;
+    memcpy(dst + head, "/\0", 1);
+    head++;
+
+    snprintf(cur, 8, "%i", (pil >> 11) & 0xf);
+    size = strlen(cur);
+    memcpy(dst + head, cur, size);
+    head += size;
+    memcpy(dst + head, " \0", 1);
+    head++;
+
+    snprintf(cur, 8, "%i", (pil >> 6) & 0x1f);
+    size = strlen(cur);
+    memcpy(dst + head, cur, size);
+    head += size;
+    memcpy(dst + head, ":\0", 1);
+    head++;
+
+    snprintf(cur, 8, "%i", pil & 0x3f);
+    size = strlen(cur);
+    strcpy(dst + head, cur);
+    head += size;
+
+    return head;
 }

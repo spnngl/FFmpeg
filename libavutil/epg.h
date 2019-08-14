@@ -52,7 +52,6 @@ typedef struct EPGEvent {
 void av_epg_init_event(EPGEvent *event);
 void av_epg_free_event(EPGEvent **event);
 void av_epg_show_event(EPGEvent *event);
-int  av_epg_csv_event(EPGEvent *event, char* dst);
 char* av_epg_bcd_to_str(const uint32_t bcd);
 char* av_epg_mjd_to_str(const uint16_t mjd);
 char* av_epg_start_time_to_str(uint8_t start_time[5]);
@@ -61,5 +60,9 @@ char* av_epg_running_status(const uint8_t running_status);
 void av_epg_component_str(EPGEvent *event, char* dst);
 char* av_epg_content_simple_str(EPGEvent *event);
 char* av_epg_content_detailed_str(EPGEvent *event);
+char* av_epg_parental_rating_min_age(const uint8_t rating);
+int av_epg_pdc_date_str(const uint32_t pil, char* dst);
+char* av_epg_sb_size_str(const uint8_t sb_size);
+char* av_epg_sb_leak_rate_str(const uint8_t sb_leak_rate);
 
 #endif /* AVUTIL_EPG_H */
