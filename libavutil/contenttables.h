@@ -21,7 +21,7 @@ static const char* const simple_nibbles[0x10] = {
 
 static const char* const detailed_nibbles[0x10][0x10] = {
     [0x0] = {
-        [0x0 ... 0xF] = "undefined"
+        [0x0 ... 0xF] = "undefined\0"
     },
     [0x1] = {
         [0x0]           = "movie/drama (general)\0",
