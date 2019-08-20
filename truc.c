@@ -1,6 +1,6 @@
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
-#include <libavutil/epg.h>
+#include <libavutil/dvb.h>
 #include <signal.h>
 #include <unistd.h>
 
@@ -114,11 +114,12 @@ int main(int argc, char **argv, char **envp)
             if (ret < 0)
                 break;
 
-            av_log(NULL, AV_LOG_ERROR, "Printing %i epg side data\n", frame->nb_side_data);
             for (int i = 0; i < frame->nb_side_data; i++) {
                 AVFrameSideData *sd = frame->side_data[i];
-                if (sd && sd->type == AV_FRAME_DATA_EPG_EVENT)
-                    av_epg_show_event((EPGEvent*)sd->data);
+                if (sd && sd->type == AV_FRAME_DATA_EPG_TABLE) {
+                    EPGTable *table = sd->data;
+                    av_epg_show_table(table, AV_LOG_WARNING);
+                }
             }
             av_frame_unref(frame);
         }
