@@ -181,9 +181,10 @@ enum AVFrameSideDataType {
     AV_FRAME_DATA_REGIONS_OF_INTEREST,
 
     /**
-     * TODO
+     * The data represents the EPGTable structure defined in
+     * libavutil/dvb.h.
      */
-    AV_FRAME_DATA_EPG_EVENT,
+    AV_FRAME_DATA_EPG_TABLE,
 };
 
 enum AVActiveFormatDescription {

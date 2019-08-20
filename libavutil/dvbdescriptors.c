@@ -45,16 +45,172 @@ fail:
 
 static int component_free(void *p)
 {
-    if (p) {
-        DvbComponentDescriptor *comp = p;
-        av_free(comp->text);
-        av_free(p);
-    }
+    DvbComponentDescriptor *comp = p;
+    av_free(comp->text);
+    av_free(p);
     return 0;
 }
 
-static DvbDescriptor component_descriptor = {
+#include "componenttables.h"
+
+static void nga_feature_description(const uint8_t component_type, char* dst)
+{
+    int head = 0, size;
+    const char* header = "NGA features: \0";
+
+    size = strlen(header);
+    memcpy(dst, header, size);
+    head += size;
+
+    if (component_type & 0x40) {
+        size = strlen(NGA_B6);
+        memcpy(dst + head, NGA_B6, size);
+        head += size;
+        memcpy(dst + head, ", \0", 2);
+        head += 2;
+    }
+
+    if (component_type & 0x20) {
+        size = strlen(NGA_B5);
+        memcpy(dst + head, NGA_B5, size);
+        head += size;
+        memcpy(dst + head, ", \0", 2);
+        head += 2;
+    }
+
+    if (component_type & 0x10) {
+        size = strlen(NGA_B4);
+        memcpy(dst + head, NGA_B4, size);
+        head += size;
+        memcpy(dst + head, ", \0", 2);
+        head += 2;
+    }
+
+    if (component_type & 0x08) {
+        size = strlen(NGA_B3);
+        memcpy(dst + head, NGA_B3, size);
+        head += size;
+        memcpy(dst + head, ", \0", 2);
+        head += 2;
+    }
+
+    if (component_type & 0x04) {
+        size = strlen(NGA_B2);
+        memcpy(dst + head, NGA_B2, size);
+        head += size;
+        memcpy(dst + head, ", \0", 2);
+        head += 2;
+    }
+
+    strcpy(dst + head, nga_b1b0[component_type & 0x3]);
+}
+
+static int ac3_description(const uint8_t component_type, char* dst)
+{
+    int head = 0, size;
+    const char* cur;
+
+    cur = ac3_b7[!!(component_type & 0x80)];
+    size = strlen(cur);
+    memcpy(dst + head, cur, size);
+    head += size;
+    memcpy(dst + head, ", \0", 2);
+    head += 2;
+
+    cur = ac3_b6[!!(component_type & 0x40)];
+    size = strlen(cur);
+    memcpy(dst + head, cur, size);
+    head += size;
+    memcpy(dst + head, ", \0", 2);
+    head += 2;
+
+    cur = ac3_b543[(component_type >> 3) & 0x7];
+    size = strlen(cur);
+    memcpy(dst + head, cur, size);
+    head += size;
+    memcpy(dst + head, ", \0", 2);
+    head += 2;
+
+    cur = ac3_b210[component_type & 0x7];
+    size = strlen(cur);
+    strcpy(dst + head, cur);
+    head += size;
+
+    return head;
+}
+
+static int dvb_audio_description(const uint8_t component_type, char* dst)
+{
+    int head = 0, size;
+    const char* cur;
+    const char* header = "NGA features: \0";
+
+    size = strlen(header);
+    memcpy(dst, header, size);
+    head += size;
+
+    cur = dvb_audio_b6[!!(component_type & 0x40)];
+    size = strlen(cur);
+    memcpy(dst + head, cur, size);
+    head += size;
+    memcpy(dst + head, ", \0", 2);
+    head += 2;
+
+    cur = dvb_audio_b543[(component_type >> 3) & 0x7];
+    size = strlen(cur);
+    memcpy(dst + head, cur, size);
+    head += size;
+    memcpy(dst + head, ", \0", 2);
+    head += 2;
+
+    cur = dvb_audio_b210[component_type & 0x7];
+    size = strlen(cur);
+    memcpy(dst + head, cur, size);
+    head += size;
+
+    return head;
+}
+
+void av_epg_component_str(DvbComponentDescriptor *comp, char* dst)
+{
+    if(!dst || !comp)
+        return;
+
+    if (comp->stream_content == 0x4)
+        ac3_description(comp->component_type, dst);
+    else if (comp->stream_content == 0x7 && comp->component_type < 0x80)
+        dvb_audio_description(comp->component_type, dst);
+    else if (comp->stream_content == 0xB && comp->stream_content_ext == 0xE)
+        nga_feature_description(comp->component_type, dst);
+    else
+        strcpy(dst, component_descriptions[comp->stream_content]
+                [comp->stream_content_ext][comp->component_type]);
+}
+
+static void component_show(void *p, int av_log_level)
+{
+    char dst[512];
+    DvbComponentDescriptor *comp = p;
+
+    av_epg_component_str(comp, dst);
+
+    av_log(NULL, av_log_level, "\t\tComponent descriptor (tag 0x%.02x):\n"
+            "\t\t\tstream_content_ext = 0x%.01x\n"
+            "\t\t\tstream_content     = 0x%.01x\n"
+            "\t\t\tcomponent_type     = 0x%.02x\n"
+            "\t\t\tcomponent_tag      = 0x%.02x\n"
+            "\t\t\tcomp_descr         = %s\n"
+            "\t\t\tiso_639_lang_code  = %.03s\n"
+            "\t\t\ttext               = %s\n",
+            comp->h.tag, comp->stream_content_ext,
+            comp->stream_content, comp->component_type,
+            comp->component_tag, dst, comp->iso_639_language_code,
+            comp->text);
+}
+
+static const DvbDescriptor component_descriptor = {
     .parse = component_parse,
+    .show = component_show,
     .free = component_free,
 };
 
@@ -79,8 +235,8 @@ static void* content_parse(DvbDescriptor *desc, const uint8_t **pp, const uint8_
         val = avpriv_dvb_get8(&p, p_end);
         if (val < 0)
             goto fail;
-        d->content_nibble_lvl_1 = (val >> 4) & 0xf;
-        d->content_nibble_lvl_2 = val & 0xf;
+        d->nibble_lvl_1 = (val >> 4) & 0xf;
+        d->nibble_lvl_2 = val & 0xf;
 
         val = avpriv_dvb_get8(&p, p_end);
         if (val < 0)
@@ -97,19 +253,52 @@ fail:
 
 static int content_free(void *p)
 {
-    if (p) {
-        DvbContentDescriptor *content = p;
+    DvbContentDescriptor *content = p;
 
-        for(int i = 0; i < content->nb_descriptions; i++)
-            av_free(content->descriptions[i]);
-        av_free(content->descriptions);
-        av_free(p);
-    }
+    for(int i = 0; i < content->nb_descriptions; i++)
+        av_free(content->descriptions[i]);
+    av_free(content->descriptions);
+    av_free(p);
     return 0;
 }
 
-static DvbDescriptor content_descriptor = {
+#include "contenttables.h"
+
+char* av_epg_content_simple_str(DvbContentDescription *description)
+{
+    return (char*)simple_nibbles[description->nibble_lvl_1];
+}
+
+char* av_epg_content_detailed_str(DvbContentDescription *description)
+{
+    return (char*)detailed_nibbles[description->nibble_lvl_1][description->nibble_lvl_2];
+}
+
+static void content_show(void *p, int av_log_level)
+{
+    DvbContentDescriptor *content = p;
+
+    av_log(NULL, av_log_level, "\t\tContent descriptor (tag 0x%.02x):\n", content->h.tag);
+
+    for (int i = 0; i < content->nb_descriptions; i++) {
+        DvbContentDescription *d = content->descriptions[i];
+
+        av_log(NULL, av_log_level, "\t\tContent description #%i:\n"
+                "\t\t\tsimple_descr = %s\n"
+                "\t\t\tdetailed_descr = %s\n"
+                "\t\t\tnibble_lvl_1 = 0x%.01x\n"
+                "\t\t\tnibble_lvl_2 = 0x%.01x\n"
+                "\t\t\tuser_byte    = 0x%.02x\n",
+                i, av_epg_content_simple_str(d),
+                av_epg_content_detailed_str(d),
+                d->nibble_lvl_1, d->nibble_lvl_2,
+                d->user_byte);
+    }
+}
+
+static const DvbDescriptor content_descriptor = {
     .parse = content_parse,
+    .show = content_show,
     .free = content_free,
 };
 
@@ -167,17 +356,30 @@ fail:
 
 static int data_broadcast_free(void *p)
 {
-    if (p) {
-        DvbDataBroadcastDescriptor *dbd = p;
-        av_free(dbd->selector);
-        av_free(dbd->text);
-        av_free(dbd);
-    }
+    DvbDataBroadcastDescriptor *dbd = p;
+    av_free(dbd->selector);
+    av_free(dbd->text);
+    av_free(dbd);
     return 0;
 }
 
-static DvbDescriptor data_broadcast_descriptor = {
+static void data_broadcast_show(void *p, int av_log_level)
+{
+    DvbDataBroadcastDescriptor *dbd = p;
+
+    av_log(NULL, av_log_level, "\t\tData broadcast descriptor (tag 0x%.02x):\n"
+            "\t\t\tdata_broadcast_id = %i\n"
+            "\t\t\tcomponent_tag = %i\n"
+            "\t\t\tselector = %s\n"
+            "\t\t\tiso_639_lang_code = %.03s\n"
+            "\t\t\ttext = %s\n",
+            dbd->h.tag, dbd->data_broadcast_id, dbd->component_tag,
+            dbd->selector, dbd->iso_639_language_code, dbd->text);
+}
+
+static const DvbDescriptor data_broadcast_descriptor = {
     .parse = data_broadcast_parse,
+    .show = data_broadcast_show,
     .free = data_broadcast_free,
 };
 
@@ -256,27 +458,50 @@ fail:
 
 static int extended_event_free(void *p)
 {
-    if (p) {
-        DvbExtendedEventDescriptor *event = p;
-        SimpleLinkedList *head, *next;
+    DvbExtendedEventDescriptor *event = p;
+    SimpleLinkedList *head, *next;
 
-        for (head = event->descriptions; head;) {
-            DvbExtendedEventDescription *d = head->data;
-            next = head->next;
-            av_free(d->descr);
-            av_free(d->item);
-            av_free(d);
-            av_free(head);
-            head = next;
-        }
-        av_free(event->text);
-        av_free(p);
+    for (head = event->descriptions; head;) {
+        DvbExtendedEventDescription *d = head->data;
+        next = head->next;
+        av_free(d->descr);
+        av_free(d->item);
+        av_free(d);
+        av_free(head);
+        head = next;
     }
+    av_free(event->text);
+    av_free(p);
     return 0;
 }
 
-static DvbDescriptor extended_event_descriptor = {
+static void extended_event_show(void *p, int av_log_level)
+{
+    int count = 0;
+    DvbExtendedEventDescriptor *event = p;
+    SimpleLinkedList *head;
+
+    av_log(NULL, av_log_level, "\t\tExtended Event descriptor (tag 0x%.02x):\n"
+            "\t\t\tnumber = %i\n"
+            "\t\t\tlast_number = %i\n"
+            "\t\t\tiso_639_lang_code = %.03s\n"
+            "\t\t\ttext = %s\n",
+            event->h.tag, event->number, event->last_number,
+            event->iso_639_language_code, event->text);
+
+    for (head = event->descriptions; head; head = head->next) {
+        DvbExtendedEventDescription *d = head->data;
+
+        av_log(NULL, av_log_level, "\t\t\tDescription #%i:\n"
+                "\t\t\t\tdescr = %s\n"
+                "\t\t\t\titem  = %s\n",
+                count++, d->descr, d->item);
+    }
+}
+
+static const DvbDescriptor extended_event_descriptor = {
     .parse = extended_event_parse,
+    .show = extended_event_show,
     .free = extended_event_free,
 };
 
@@ -310,40 +535,37 @@ static int extended_event_linkage_free(DvbExtendedEventLinkage *link)
 
 static int linkage_free(void *p)
 {
-    if (p) {
-        DvbLinkageDescriptor *ld = p;
+    DvbLinkageDescriptor *ld = p;
 
 
-        switch(ld->linkage_type) {
-        case DVB_LINKAGE_TYPE_MOBILE_HAND_OVER:
-            mobile_hand_over_linkage_free(ld->link);
-            break;
-        case DVB_LINKAGE_TYPE_EVENT:
-            event_linkage_free(ld->link);
-            break;
-        case DVB_LINKAGE_TYPE_EXTENDED_EVENT_FIRST ... DVB_LINKAGE_TYPE_EXTENDED_EVENT_LAST:
-            extended_event_linkage_free(ld->link);
-            break;
-        // TODO implement
-        case DVB_LINKAGE_TYPE_INFORMATION:
-        case DVB_LINKAGE_TYPE_EPG:
-        case DVB_LINKAGE_TYPE_CA_REPLACEMENT:
-        case DVB_LINKAGE_TYPE_COMPLETE_BOUQUET:
-        case DVB_LINKAGE_TYPE_SERVICE_REPLACEMENT:
-        case DVB_LINKAGE_TYPE_DATA_BROADCAST:
-        case DVB_LINKAGE_TYPE_RCS_MAP:
-        case DVB_LINKAGE_TYPE_SYSTEM_SOFTWARE_UPDATE:
-        case DVB_LINKAGE_TYPE_CONTAINS_SSU_BAT_NIT:
-        case DVB_LINKAGE_TYPE_IP_MAC_NOTIF:
-        case DVB_LINKAGE_TYPE_CONTAINS_INT_BAT_NIT:
-        case DVB_LINKAGE_TYPE_DOWNLOADABLE_FONT_INFO:
-        default:
-            break;
-        };
+    switch(ld->linkage_type) {
+    case DVB_LINKAGE_TYPE_MOBILE_HAND_OVER:
+        mobile_hand_over_linkage_free(ld->link);
+        break;
+    case DVB_LINKAGE_TYPE_EVENT:
+        event_linkage_free(ld->link);
+        break;
+    case DVB_LINKAGE_TYPE_EXTENDED_EVENT_FIRST ... DVB_LINKAGE_TYPE_EXTENDED_EVENT_LAST:
+        extended_event_linkage_free(ld->link);
+        break;
+    case DVB_LINKAGE_TYPE_INFORMATION:
+    case DVB_LINKAGE_TYPE_EPG:
+    case DVB_LINKAGE_TYPE_CA_REPLACEMENT:
+    case DVB_LINKAGE_TYPE_COMPLETE_BOUQUET:
+    case DVB_LINKAGE_TYPE_SERVICE_REPLACEMENT:
+    case DVB_LINKAGE_TYPE_DATA_BROADCAST:
+    case DVB_LINKAGE_TYPE_RCS_MAP:
+    case DVB_LINKAGE_TYPE_SYSTEM_SOFTWARE_UPDATE:
+    case DVB_LINKAGE_TYPE_CONTAINS_SSU_BAT_NIT:
+    case DVB_LINKAGE_TYPE_IP_MAC_NOTIF:
+    case DVB_LINKAGE_TYPE_CONTAINS_INT_BAT_NIT:
+    case DVB_LINKAGE_TYPE_DOWNLOADABLE_FONT_INFO:
+    default:
+        break;
+    };
 
-        av_free(ld->private_data);
-        av_free(p);
-    }
+    av_free(ld->private_data);
+    av_free(p);
     return 0;
 }
 
@@ -419,6 +641,8 @@ fail:
     event_linkage_free(ev_link);
     return NULL;
 }
+
+#include "linkagetables.h"
 
 static void* extended_event_linkage_parse(const uint8_t **pp, const uint8_t *p_end)
 {
@@ -499,7 +723,7 @@ static void* linkage_parse(DvbDescriptor *desc, const uint8_t **pp, const uint8_
     val = avpriv_dvb_get16(&p, p_end);
     if (val < 0)
         goto fail;
-    ld->transport_stream_id = val;
+    ld->ts_id = val;
 
     val = avpriv_dvb_get16(&p, p_end);
     if (val < 0)
@@ -560,9 +784,14 @@ fail:
     return NULL;
 }
 
+static void linkage_show(void *p, int av_log_level)
+{
+    av_log(NULL, AV_LOG_WARNING, "\t\tLinkage desciptor show function not implemented\n");
+}
 
-static DvbDescriptor linkage_descriptor = {
+static const DvbDescriptor linkage_descriptor = {
     .parse = linkage_parse,
+    .show = linkage_show,
     .free = linkage_free,
 };
 
@@ -613,26 +842,45 @@ fail:
 
 static int multilingual_component_free(void *p)
 {
-    if (p) {
-        DvbMultilingualComponentDescriptor *mcd = p;
-        SimpleLinkedList *head, *next;
+    DvbMultilingualComponentDescriptor *mcd = p;
+    SimpleLinkedList *head, *next;
 
-        for (head = mcd->descriptions; head;) {
-            DvbMultilingualComponentDescription *d = head->data;
+    for (head = mcd->descriptions; head;) {
+        DvbMultilingualComponentDescription *d = head->data;
 
-            next = head->next;
-            av_free(d->text);
-            av_free(d);
-            av_free(head);
-            head = next;
-        }
-        av_free(mcd);
+        next = head->next;
+        av_free(d->text);
+        av_free(d);
+        av_free(head);
+        head = next;
     }
+    av_free(mcd);
     return 0;
 }
 
-static DvbDescriptor multilingual_component_descriptor = {
+static void multilingual_component_show(void *p, int av_log_level)
+{
+    int count = 0;
+    SimpleLinkedList *head;
+    DvbMultilingualComponentDescriptor *mcd = p;
+
+    av_log(NULL, av_log_level, "\t\tMultilingual component descriptor (tag 0x%.02x):\n"
+           "\t\t\tcomponent tag = %i\n", mcd->h.tag, mcd->component_tag);
+
+    for (head = mcd->descriptions; head; head = head->next) {
+        DvbMultilingualComponentDescription *d = head->data;
+
+        av_log(NULL, av_log_level, "\t\t\tMultilingual component description #%i"
+               "\t\t\t\tiso_639_language_code = %.03s\n"
+               "\t\t\t\ttext = %s\n",
+               count++,  d->iso_639_language_code, d->text);
+    }
+
+}
+
+static const DvbDescriptor multilingual_component_descriptor = {
     .parse = multilingual_component_parse,
+    .show = multilingual_component_show,
     .free = multilingual_component_free,
 };
 
@@ -674,19 +922,62 @@ fail:
 
 static int parental_rating_free(void *p)
 {
-    if (p) {
-        DvbParentalRatingDescriptor *prd = p;
+    DvbParentalRatingDescriptor *prd = p;
 
-        for (int i = 0; i < prd->nb_descriptions; i++)
-            av_free(prd->descriptions[i]);
-        av_free(prd->descriptions);
-        av_free(p);
-    }
+    for (int i = 0; i < prd->nb_descriptions; i++)
+        av_free(prd->descriptions[i]);
+    av_free(prd->descriptions);
+    av_free(p);
     return 0;
 }
 
-static DvbDescriptor parental_rating_descriptor = {
+char* av_epg_parental_rating_min_age(const uint8_t rating)
+{
+    int size;
+    char *ret;
+
+    switch(rating) {
+        // Defined by broadcaster
+        case 0x10 ... 0xFF:
+        // Undefined value
+        case 0x00:
+            size = sizeof("undefined") + 1;
+            ret = av_malloc(size);
+            memcpy(ret, "undefined\0", size);
+            break;
+        case 0x01 ... 0x0F:
+            ret = av_malloc(3);
+            snprintf(ret, 3, "%d", rating + 3);
+            break;
+        default:
+            ret = NULL;
+            break;
+    }
+    return ret;
+}
+
+static void parental_rating_show(void *p, int av_log_level)
+{
+    DvbParentalRatingDescriptor *par = p;
+
+    av_log(NULL, av_log_level, "\t\tParental Rating descriptor (tag 0x%.02x):\n",
+            par->h.tag);
+
+    for (int i = 0; i < par->nb_descriptions; i++) {
+        DvbParentalRatingDescription *d = par->descriptions[i];
+        char *rating = av_epg_parental_rating_min_age(d->rating);
+
+        av_log(NULL, av_log_level, "\t\t\tDescription #%i:\n"
+                "\t\t\t\tcountry_code = %.03s\n"
+                "\t\t\t\trating = %s (raw %i)\n",
+                i, d->country_code, rating, d->rating);
+        av_free(rating);
+    }
+}
+
+static const DvbDescriptor parental_rating_descriptor = {
     .parse = parental_rating_parse,
+    .show = parental_rating_show,
     .free = parental_rating_free,
 };
 
@@ -719,15 +1010,59 @@ fail:
 
 static int pdc_free(void *p)
 {
-    if (p) {
-        DvbPDCDescriptor *pdc = p;
-        av_free(pdc);
-    }
+    DvbPDCDescriptor *pdc = p;
+    av_free(pdc);
     return 0;
 }
 
-static DvbDescriptor pdc_descriptor = {
+int av_epg_pdc_date_str(const uint32_t pil, char* dst)
+{
+    int head = 0, size;
+    char cur[8];
+
+    snprintf(cur, 8, "%i", (pil >> 15));
+    size = strlen(cur);
+    memcpy(dst, cur, size);
+    head += size;
+    memcpy(dst + head, "/\0", 1);
+    head++;
+
+    snprintf(cur, 8, "%i", (pil >> 11) & 0xf);
+    size = strlen(cur);
+    memcpy(dst + head, cur, size);
+    head += size;
+    memcpy(dst + head, " \0", 1);
+    head++;
+
+    snprintf(cur, 8, "%i", (pil >> 6) & 0x1f);
+    size = strlen(cur);
+    memcpy(dst + head, cur, size);
+    head += size;
+    memcpy(dst + head, ":\0", 1);
+    head++;
+
+    snprintf(cur, 8, "%i", pil & 0x3f);
+    size = strlen(cur);
+    strcpy(dst + head, cur);
+    head += size;
+
+    return head;
+}
+
+static void pdc_show(void *p, int av_log_level)
+{
+    char date[32];
+    DvbPDCDescriptor *pdc = p;
+
+    av_epg_pdc_date_str(pdc->programme_identification_label, date);
+    av_log(NULL, av_log_level, "\t\tPDC descriptor (tag 0x%.02x):\n"
+            "\t\t\tdate = %s (raw %i)\n", pdc->h.tag, date,
+            pdc->programme_identification_label);
+}
+
+static const DvbDescriptor pdc_descriptor = {
     .parse = pdc_parse,
+    .show = pdc_show,
     .free = pdc_free,
 };
 
@@ -754,13 +1089,21 @@ fail:
 
 static int private_data_specifier_free(void *p)
 {
-    if (p)
-        av_free(p);
+    av_free(p);
     return 0;
 }
 
-static DvbDescriptor private_data_specifier_descriptor = {
+static void private_data_specifier_show(void *p, int av_log_level)
+{
+    DvbPrivateDataSpecifierDescriptor *pr = p;
+
+    av_log(NULL, av_log_level, "\t\tPrivate data specifier (tag 0x%.02x):\n"
+            "\t\t\tspecifier = %i\n", pr->h.tag, pr->specifier);
+}
+
+static const DvbDescriptor private_data_specifier_descriptor = {
     .parse = private_data_specifier_parse,
+    .show = private_data_specifier_show,
     .free = private_data_specifier_free,
 };
 
@@ -810,17 +1153,28 @@ fail:
 
 static int short_event_free(void *p)
 {
-    if (p) {
-        DvbShortEventDescriptor *short_event = p;
-        av_free(short_event->event_name);
-        av_free(short_event->text);
-        av_free(p);
-    }
+    DvbShortEventDescriptor *short_event = p;
+    av_free(short_event->event_name);
+    av_free(short_event->text);
+    av_free(p);
     return 0;
 }
 
-static DvbDescriptor short_event_descriptor = {
+static void short_event_show(void *p, int av_log_level)
+{
+    DvbShortEventDescriptor *event = p;
+
+    av_log(NULL, av_log_level, "\t\tShort event descriptor (tag 0x%.02x):\n"
+            "\t\t\tiso_639_language_code = %.03s\n"
+            "\t\t\tevent_name = %s\n"
+            "\t\t\ttext = %s\n",
+            event->h.tag, event->iso_639_language_code, event->event_name,
+            event->text);
+}
+
+static const DvbDescriptor short_event_descriptor = {
     .parse = short_event_parse,
+    .show = short_event_show,
     .free = short_event_free,
 };
 
@@ -856,16 +1210,38 @@ fail:
 
 static int short_smoothing_buffer_free(void *p)
 {
-    if (p) {
-        DvbShortSmoothingBufferDescriptor *ssb = p;
-        av_free(ssb->DVB_reserved);
-        av_free(ssb);
-    }
+    DvbShortSmoothingBufferDescriptor *ssb = p;
+    av_free(ssb->DVB_reserved);
+    av_free(ssb);
     return 0;
 }
 
-static DvbDescriptor short_smoothing_buffer_descriptor = {
+#include "smoothing_buffer_tables.h"
+
+char* av_epg_sb_size_str(const uint8_t sb_size)
+{
+    return sb_size < 4 ? (char*)smoothing_buffer_size[sb_size] : (char*)"null\0";
+}
+
+char* av_epg_sb_leak_rate_str(const uint8_t sb_leak_rate)
+{
+    return sb_leak_rate < 64 ? (char*)smoothing_buffer_leak_rate[sb_leak_rate] : (char*)"null\0";
+}
+
+static void short_smoothing_buffer_show(void *p, int av_log_level)
+{
+    DvbShortSmoothingBufferDescriptor *ssb = p;
+
+    av_log(NULL, av_log_level, "\t\tShort smoothing buffer (tag 0x%.02x):\n"
+            "\t\t\tsb_size = %s (raw %i)\n"
+            "\t\t\tsb_leak_rate = %s (raw %i)\n",
+            ssb->h.tag, av_epg_sb_size_str(ssb->sb_size), ssb->sb_size,
+            av_epg_sb_leak_rate_str(ssb->sb_leak_rate), ssb->sb_leak_rate);
+}
+
+static const DvbDescriptor short_smoothing_buffer_descriptor = {
     .parse = short_smoothing_buffer_parse,
+    .show = short_smoothing_buffer_show,
     .free = short_smoothing_buffer_free,
 };
 
@@ -889,16 +1265,24 @@ static void* stuffing_parse(DvbDescriptor *desc, const uint8_t **pp, const uint8
 
 static int stuffing_free(void *p)
 {
-    if (p) {
-        DvbStuffingDescriptor *stuff = p;
-        av_free(stuff->stuffing_bytes);
-        av_free(p);
-    }
+    DvbStuffingDescriptor *stuff = p;
+    av_free(stuff->stuffing_bytes);
+    av_free(p);
     return 0;
 }
 
-static DvbDescriptor stuffing_descriptor = {
+static void stuffing_show(void *p, int av_log_level)
+{
+    DvbStuffingDescriptor *stuff = p;
+
+    av_log(NULL, av_log_level, "\t\tStuffing descriptor (tag 0x%.02x):\n"
+           "\t\t\tstuffing_bytes = %s\n",
+           stuff->h.tag, stuff->stuffing_bytes);
+}
+
+static const DvbDescriptor stuffing_descriptor = {
     .parse = stuffing_parse,
+    .show = stuffing_show,
     .free = stuffing_free,
 };
 
@@ -969,20 +1353,36 @@ fail:
 
 static int telephone_free(void *p)
 {
-    if (p) {
-        DvbTelephoneDescriptor *tel = p;
-        av_free(tel->country_prefix);
-        av_free(tel->international_area_code);
-        av_free(tel->operator_code);
-        av_free(tel->national_area_code);
-        av_free(tel->core_number);
-        av_free(p);
-    }
+    DvbTelephoneDescriptor *tel = p;
+    av_free(tel->country_prefix);
+    av_free(tel->international_area_code);
+    av_free(tel->operator_code);
+    av_free(tel->national_area_code);
+    av_free(tel->core_number);
+    av_free(p);
     return 0;
 }
 
-static DvbDescriptor telephone_descriptor = {
+static void telephone_show(void *p, int av_log_level)
+{
+    DvbTelephoneDescriptor *tel = p;
+
+    av_log(NULL, av_log_level, "\t\tTelephone descriptor (tag 0x%.02x):\n"
+            "\t\t\tforeign_availability = %i\n"
+            "\t\t\tconnection_type = %i\n"
+            "\t\t\tcountry_prefix = %s\n"
+            "\t\t\tinternational_area_code = %s\n"
+            "\t\t\toperator_code = %s\n"
+            "\t\t\tnational_area_code = %s\n"
+            "\t\t\tcore_number = %s\n",
+            tel->h.tag, tel->foreign_availability, tel->connection_type,
+            tel->country_prefix, tel->international_area_code,
+            tel->operator_code, tel->national_area_code, tel->core_number);
+}
+
+static const DvbDescriptor telephone_descriptor = {
     .parse = telephone_parse,
+    .show = telephone_show,
     .free = telephone_free,
 };
 
@@ -1014,13 +1414,23 @@ fail:
 
 static int time_shifted_event_free(void *p)
 {
-    if (p)
-        av_free(p);
+    av_free(p);
     return 0;
 }
 
-static DvbDescriptor time_shifted_event_descriptor = {
+static void time_shifted_event_show(void *p, int av_log_level)
+{
+    DvbTimeShiftedEventDescriptor *tsed = p;
+
+    av_log(NULL, av_log_level, "\t\tTime Shifted Event descriptor (tag 0x%.02x):\n"
+            "\t\t\treference_service_id = %i\n"
+            "\t\t\treference_event_id = %i\n",
+            tsed->h.tag, tsed->reference_service_id, tsed->reference_event_id);
+}
+
+static const DvbDescriptor time_shifted_event_descriptor = {
     .parse = time_shifted_event_parse,
+    .show = time_shifted_event_show,
     .free = time_shifted_event_free,
 };
 
@@ -1051,20 +1461,29 @@ fail:
 
 static int ca_identifier_free(void *p)
 {
-    if (p) {
-        DvbCAIdentifierDescriptor *caid = p;
-        av_free(caid->ca_system_id);
-        av_free(p);
-    }
+    DvbCAIdentifierDescriptor *caid = p;
+    av_free(caid->ca_system_id);
+    av_free(p);
     return 0;
 }
 
-static DvbDescriptor ca_identifier_descriptor = {
+static void ca_identifier_show(void *p, int av_log_level)
+{
+    DvbCAIdentifierDescriptor *caid = p;
+
+    av_log(NULL, av_log_level, "\t\tCA Identifier descriptor (tag 0x%.02x):\n", caid->h.tag);
+    for (int i = 0; i < caid->nb_ids; i++)
+        av_log(NULL, av_log_level, "\t\t\tca_system_id #%i = %i\n",
+                i, caid->ca_system_id[i]);
+}
+
+static const DvbDescriptor ca_identifier_descriptor = {
     .parse = ca_identifier_parse,
+    .show = ca_identifier_show,
     .free = ca_identifier_free,
 };
 
-static DvbDescriptor* all_descriptors[] = {
+static const DvbDescriptor * const all_descriptors[] = {
     [0x00 ... 0x01] = NULL,
     [DVB_DESCRIPTOR_TAG_VIDEO_STREAM_HEADER_PARAMS] = NULL,
     [DVB_DESCRIPTOR_TAG_AUDIO_STREAM_HEADER_PARAMS] = NULL,
@@ -1187,8 +1606,8 @@ static DvbDescriptor* all_descriptors[] = {
     [0x80 ... 0xFF] = NULL
 };
 
-int dvb_parse_descriptor_header(DvbDescriptorHeader *h, const uint8_t **pp,
-                                const uint8_t *p_end)
+int av_dvb_parse_descriptor_header(DvbDescriptorHeader *h, const uint8_t **pp,
+                                   const uint8_t *p_end)
 {
     int val;
     const uint8_t *p = *pp;
@@ -1208,7 +1627,7 @@ int dvb_parse_descriptor_header(DvbDescriptorHeader *h, const uint8_t **pp,
     return 0;
 }
 
-DvbDescriptor* ff_dvb_get_descriptor(DvbDescriptorHeader *h)
+const DvbDescriptor* const av_dvb_get_descriptor(DvbDescriptorHeader *h)
 {
     return all_descriptors[h->tag];
 }

@@ -9,7 +9,6 @@ HEADERS = ac3_parser.h                                                  \
           d3d11va.h                                                     \
           dirac.h                                                       \
           dv_profile.h                                                  \
-		  dvbdescriptors.h												\
           dxva2.h                                                       \
           jni.h                                                         \
           mediacodec.h                                                  \
@@ -36,7 +35,6 @@ OBJS = ac3_parser.o                                                     \
        decode.o                                                         \
        dirac.o                                                          \
        dv_profile.o                                                     \
-	   dvbdescriptors.o													\
 	   epgdec.o															\
        encode.o                                                         \
        imgconvert.o                                                     \
