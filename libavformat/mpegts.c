@@ -168,6 +168,8 @@ struct MpegTSContext {
     /** filters for various streams specified by PMT + for the PAT and PMT */
     MpegTSFilter *pids[NB_PID_MAX];
     int current_pid;
+
+    AVStream *epg_stream;
 };
 
 #define MPEGTS_OPTIONS \
@@ -2498,13 +2500,68 @@ static void pat_cb(MpegTSFilter *filter, const uint8_t *section, int section_len
     }
 }
 
+static void eit_cb(MpegTSFilter *filter, const uint8_t *section, int section_len)
+{
+    MpegTSContext *ts = filter->u.section_filter.opaque;
+    const uint8_t *p, *p_end;
+    SectionHeader h1, *h = &h1;
+
+    /*
+     * Sometimes we receive EPG packets but SDT table do not have
+     * eit_pres_following or eit_sched turned on, so we open EPG
+     * stream directly here.
+     */
+    if (!ts->epg_stream) {
+        ts->epg_stream = avformat_new_stream(ts->stream, NULL);
+        if (!ts->epg_stream)
+            return;
+        ts->epg_stream->id = EIT_PID;
+        ts->epg_stream->codecpar->codec_type = AVMEDIA_TYPE_DATA;
+        ts->epg_stream->codecpar->codec_id = AV_CODEC_ID_EPG;
+    }
+
+    if (ts->epg_stream->discard == AVDISCARD_ALL)
+        return;
+
+    p_end = section + section_len - 4;
+    p     = section;
+
+    if (parse_section_header(h, &p, p_end) < 0)
+        return;
+    if (h->tid < EIT_TID || h->tid > OEITS_END_TID)
+        return;
+
+    av_log(ts->stream, AV_LOG_TRACE, "EIT: tid received = %.02x\n", h->tid);
+
+    /**
+     * Service_id 0xFFFF is reserved, it indicates that the current EIT table
+     * is scrambled.
+     */
+    if (h->id == 0xFFFF) {
+        av_log(ts->stream, AV_LOG_TRACE, "Scrambled EIT table received.\n");
+        return;
+    }
+
+    /**
+     * In case we receive an EPG packet before mpegts context is fully
+     * initialized.
+     */
+    if (!ts->pkt)
+        return;
+
+    new_data_packet(section, section_len, ts->pkt);
+    ts->pkt->stream_index = ts->epg_stream->index;
+    ts->stop_parse = 1;
+}
+
 static void sdt_cb(MpegTSFilter *filter, const uint8_t *section, int section_len)
 {
     MpegTSContext *ts = filter->u.section_filter.opaque;
     MpegTSSectionFilter *tssf = &filter->u.section_filter;
     SectionHeader h1, *h = &h1;
     const uint8_t *p, *p_end, *desc_list_end, *desc_end;
-    int onid, val, sid, desc_list_len, desc_tag, desc_len, service_type;
+    int onid, val, sid, desc_list_len, desc_tag, desc_len, service_type,
+        eit_sched, eit_pres_following;
     char *name, *provider_name;
 
     av_log(ts->stream, AV_LOG_TRACE, "SDT:\n");
@@ -2534,6 +2591,13 @@ static void sdt_cb(MpegTSFilter *filter, const uint8_t *section, int section_len
         val = get8(&p, p_end);
         if (val < 0)
             break;
+        eit_sched = (val >> 1) & 0x1;
+        eit_pres_following = val & 0x1;
+
+        if ((eit_sched | eit_pres_following) && !ts->epg_stream)
+            av_log(ts->stream, AV_LOG_TRACE, "SDT table advertise EIT but no"
+                   " packets were received yet.\n");
+
         desc_list_len = get16(&p, p_end);
         if (desc_list_len < 0)
             break;
@@ -2984,8 +3048,8 @@ static int mpegts_read_header(AVFormatContext *s)
         seek_back(s, pb, pos);
 
         mpegts_open_section_filter(ts, SDT_PID, sdt_cb, ts, 1);
-
         mpegts_open_section_filter(ts, PAT_PID, pat_cb, ts, 1);
+        mpegts_open_section_filter(ts, EIT_PID, eit_cb, ts, 1);
 
         handle_packets(ts, probesize / ts->raw_packet_size);
         /* if could not find service, enable auto_guess */
@@ -3240,8 +3304,10 @@ MpegTSContext *avpriv_mpegts_parse_open(AVFormatContext *s)
     ts->raw_packet_size = TS_PACKET_SIZE;
     ts->stream = s;
     ts->auto_guess = 1;
+
     mpegts_open_section_filter(ts, SDT_PID, sdt_cb, ts, 1);
     mpegts_open_section_filter(ts, PAT_PID, pat_cb, ts, 1);
+    mpegts_open_section_filter(ts, EIT_PID, eit_cb, ts, 1);
 
     return ts;
 }
