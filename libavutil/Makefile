@@ -24,6 +24,7 @@ HEADERS = adler32.h                                                     \
           dict.h                                                        \
           display.h                                                     \
           downmix_info.h                                                \
+          dvb.h                                                         \
           encryption_info.h                                             \
           error.h                                                       \
           eval.h                                                        \
@@ -167,6 +168,7 @@ OBJS = adler32.o                                                        \
 OBJS-$(CONFIG_CUDA)                     += hwcontext_cuda.o
 OBJS-$(CONFIG_D3D11VA)                  += hwcontext_d3d11va.o
 OBJS-$(CONFIG_DXVA2)                    += hwcontext_dxva2.o
+OBJS-$(CONFIG_EPG)                      += dvb.o
 OBJS-$(CONFIG_LIBDRM)                   += hwcontext_drm.o
 OBJS-$(CONFIG_LZO)                      += lzo.o
 OBJS-$(CONFIG_MEDIACODEC)               += hwcontext_mediacodec.o
