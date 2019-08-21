@@ -2337,6 +2337,7 @@ CONFIG_EXTRA="
     cbs_vp9
     dirac_parse
     dnn
+    dvb
     dvprofile
     exif
     faandct
@@ -3268,8 +3269,8 @@ mov_muxer_select="iso_media riffenc rtpenc_chain"
 mp3_demuxer_select="mpegaudio_parser"
 mp3_muxer_select="mpegaudioheader"
 mp4_muxer_select="mov_muxer"
-mpegts_demuxer_select="iso_media"
-mpegts_muxer_select="adts_muxer latm_muxer"
+mpegts_demuxer_select="iso_media dvb"
+mpegts_muxer_select="adts_muxer latm_muxer dvb"
 mpegtsraw_demuxer_select="mpegts_demuxer"
 mxf_d10_muxer_select="mxf_muxer"
 mxf_opatom_muxer_select="mxf_muxer"

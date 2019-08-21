@@ -28,6 +28,7 @@
 #include "libavutil/mathematics.h"
 #include "libavutil/opt.h"
 #include "libavutil/avassert.h"
+#include "libavutil/dvb.h"
 #include "libavcodec/bytestream.h"
 #include "libavcodec/get_bits.h"
 #include "libavcodec/opus.h"
@@ -637,15 +638,7 @@ static int get_packet_size(AVFormatContext* s)
     return AVERROR_INVALIDDATA;
 }
 
-typedef struct SectionHeader {
-    uint8_t tid;
-    uint16_t id;
-    uint8_t version;
-    uint8_t sec_num;
-    uint8_t last_sec_num;
-} SectionHeader;
-
-static int skip_identical(const SectionHeader *h, MpegTSSectionFilter *tssf)
+static int skip_identical(const DvbSectionHeader *h, MpegTSSectionFilter *tssf)
 {
     if (h->version == tssf->last_ver && tssf->last_crc == tssf->crc)
         return 1;
@@ -656,33 +649,6 @@ static int skip_identical(const SectionHeader *h, MpegTSSectionFilter *tssf)
     return 0;
 }
 
-static inline int get8(const uint8_t **pp, const uint8_t *p_end)
-{
-    const uint8_t *p;
-    int c;
-
-    p = *pp;
-    if (p >= p_end)
-        return AVERROR_INVALIDDATA;
-    c   = *p++;
-    *pp = p;
-    return c;
-}
-
-static inline int get16(const uint8_t **pp, const uint8_t *p_end)
-{
-    const uint8_t *p;
-    int c;
-
-    p = *pp;
-    if (1 >= p_end - p)
-        return AVERROR_INVALIDDATA;
-    c   = AV_RB16(p);
-    p  += 2;
-    *pp = p;
-    return c;
-}
-
 /* read and allocate a DVB string preceded by its length */
 static char *getstr8(const uint8_t **pp, const uint8_t *p_end)
 {
@@ -691,7 +657,7 @@ static char *getstr8(const uint8_t **pp, const uint8_t *p_end)
     char *str;
 
     p   = *pp;
-    len = get8(&p, p_end);
+    len = avpriv_dvb_get8(&p, p_end);
     if (len < 0)
         return NULL;
     if (len > p_end - p)
@@ -749,35 +715,6 @@ no_iconv:
     p  += len;
     *pp = p;
     return str;
-}
-
-static int parse_section_header(SectionHeader *h,
-                                const uint8_t **pp, const uint8_t *p_end)
-{
-    int val;
-
-    val = get8(pp, p_end);
-    if (val < 0)
-        return val;
-    h->tid = val;
-    *pp += 2;
-    val  = get16(pp, p_end);
-    if (val < 0)
-        return val;
-    h->id = val;
-    val = get8(pp, p_end);
-    if (val < 0)
-        return val;
-    h->version = (val >> 1) & 0x1f;
-    val = get8(pp, p_end);
-    if (val < 0)
-        return val;
-    h->sec_num = val;
-    val = get8(pp, p_end);
-    if (val < 0)
-        return val;
-    h->last_sec_num = val;
-    return 0;
 }
 
 typedef struct StreamType {
@@ -1659,7 +1596,7 @@ static void m4sl_cb(MpegTSFilter *filter, const uint8_t *section,
 {
     MpegTSContext *ts = filter->u.section_filter.opaque;
     MpegTSSectionFilter *tssf = &filter->u.section_filter;
-    SectionHeader h;
+    DvbSectionHeader h;
     const uint8_t *p, *p_end;
     AVIOContext pb;
     int mp4_descr_count = 0;
@@ -1669,7 +1606,7 @@ static void m4sl_cb(MpegTSFilter *filter, const uint8_t *section,
 
     p_end = section + section_len - 4;
     p = section;
-    if (parse_section_header(&h, &p, p_end) < 0)
+    if (avpriv_dvb_parse_section_header(&h, &p, p_end) < 0)
         return;
     if (h.tid != M4OD_TID)
         return;
@@ -1775,10 +1712,10 @@ int ff_parse_mpeg2_descriptor(AVFormatContext *fc, AVStream *st, int stream_type
     char language[252];
     int i;
 
-    desc_tag = get8(pp, desc_list_end);
+    desc_tag = avpriv_dvb_get8(pp, desc_list_end);
     if (desc_tag < 0)
         return AVERROR_INVALIDDATA;
-    desc_len = get8(pp, desc_list_end);
+    desc_len = avpriv_dvb_get8(pp, desc_list_end);
     if (desc_len < 0)
         return AVERROR_INVALIDDATA;
     desc_end = *pp + desc_len;
@@ -1793,12 +1730,12 @@ int ff_parse_mpeg2_descriptor(AVFormatContext *fc, AVStream *st, int stream_type
 
     switch (desc_tag) {
     case 0x02: /* video stream descriptor */
-        if (get8(pp, desc_end) & 0x1) {
+        if (avpriv_dvb_get8(pp, desc_end) & 0x1) {
             st->disposition |= AV_DISPOSITION_STILL_IMAGE;
         }
         break;
     case 0x1E: /* SL descriptor */
-        desc_es_id = get16(pp, desc_end);
+        desc_es_id = avpriv_dvb_get16(pp, desc_end);
         if (desc_es_id < 0)
             break;
         if (ts && ts->pids[pid])
@@ -1821,7 +1758,7 @@ int ff_parse_mpeg2_descriptor(AVFormatContext *fc, AVStream *st, int stream_type
             }
         break;
     case 0x1F: /* FMC descriptor */
-        if (get16(pp, desc_end) < 0)
+        if (avpriv_dvb_get16(pp, desc_end) < 0)
             break;
         if (mp4_descr_count > 0 &&
             (st->codecpar->codec_id == AV_CODEC_ID_AAC_LATM ||
@@ -1865,9 +1802,9 @@ int ff_parse_mpeg2_descriptor(AVFormatContext *fc, AVStream *st, int stream_type
                 extradata = st->codecpar->extradata;
 
                 for (i = 0; i < language_count; i++) {
-                    language[i * 4 + 0] = get8(pp, desc_end);
-                    language[i * 4 + 1] = get8(pp, desc_end);
-                    language[i * 4 + 2] = get8(pp, desc_end);
+                    language[i * 4 + 0] = avpriv_dvb_get8(pp, desc_end);
+                    language[i * 4 + 1] = avpriv_dvb_get8(pp, desc_end);
+                    language[i * 4 + 2] = avpriv_dvb_get8(pp, desc_end);
                     language[i * 4 + 3] = ',';
 
                     memcpy(extradata, *pp, 2);
@@ -1916,9 +1853,9 @@ int ff_parse_mpeg2_descriptor(AVFormatContext *fc, AVStream *st, int stream_type
                 extradata = st->codecpar->extradata;
 
                 for (i = 0; i < language_count; i++) {
-                    language[i * 4 + 0] = get8(pp, desc_end);
-                    language[i * 4 + 1] = get8(pp, desc_end);
-                    language[i * 4 + 2] = get8(pp, desc_end);
+                    language[i * 4 + 0] = avpriv_dvb_get8(pp, desc_end);
+                    language[i * 4 + 1] = avpriv_dvb_get8(pp, desc_end);
+                    language[i * 4 + 2] = avpriv_dvb_get8(pp, desc_end);
                     language[i * 4 + 3] = ',';
 
                     /* hearing impaired subtitles detection using subtitling_type */
@@ -1933,7 +1870,7 @@ int ff_parse_mpeg2_descriptor(AVFormatContext *fc, AVStream *st, int stream_type
                         break;
                     }
 
-                    extradata[4] = get8(pp, desc_end); /* subtitling_type */
+                    extradata[4] = avpriv_dvb_get8(pp, desc_end); /* subtitling_type */
                     memcpy(extradata, *pp, 4); /* composition_page_id and ancillary_page_id */
                     extradata += 5;
 
@@ -1948,11 +1885,11 @@ int ff_parse_mpeg2_descriptor(AVFormatContext *fc, AVStream *st, int stream_type
         break;
     case 0x0a: /* ISO 639 language descriptor */
         for (i = 0; i + 4 <= desc_len; i += 4) {
-            language[i + 0] = get8(pp, desc_end);
-            language[i + 1] = get8(pp, desc_end);
-            language[i + 2] = get8(pp, desc_end);
+            language[i + 0] = avpriv_dvb_get8(pp, desc_end);
+            language[i + 1] = avpriv_dvb_get8(pp, desc_end);
+            language[i + 2] = avpriv_dvb_get8(pp, desc_end);
             language[i + 3] = ',';
-            switch (get8(pp, desc_end)) {
+            switch (avpriv_dvb_get8(pp, desc_end)) {
             case 0x01:
                 st->disposition |= AV_DISPOSITION_CLEAN_EFFECTS;
                 break;
@@ -1982,19 +1919,19 @@ int ff_parse_mpeg2_descriptor(AVFormatContext *fc, AVStream *st, int stream_type
         }
         break;
     case 0x52: /* stream identifier descriptor */
-        st->stream_identifier = 1 + get8(pp, desc_end);
+        st->stream_identifier = 1 + avpriv_dvb_get8(pp, desc_end);
         break;
     case 0x26: /* metadata descriptor */
-        if (get16(pp, desc_end) == 0xFFFF)
+        if (avpriv_dvb_get16(pp, desc_end) == 0xFFFF)
             *pp += 4;
-        if (get8(pp, desc_end) == 0xFF) {
+        if (avpriv_dvb_get8(pp, desc_end) == 0xFF) {
             st->codecpar->codec_tag = bytestream_get_le32(pp);
             if (st->codecpar->codec_id == AV_CODEC_ID_NONE)
                 mpegts_find_stream_type(st, st->codecpar->codec_tag, METADATA_types);
         }
         break;
     case 0x7f: /* DVB extension descriptor */
-        ext_desc_tag = get8(pp, desc_end);
+        ext_desc_tag = avpriv_dvb_get8(pp, desc_end);
         if (ext_desc_tag < 0)
             return AVERROR_INVALIDDATA;
         if (st->codecpar->codec_id == AV_CODEC_ID_OPUS &&
@@ -2008,7 +1945,7 @@ int ff_parse_mpeg2_descriptor(AVFormatContext *fc, AVStream *st, int stream_type
                 st->codecpar->extradata_size = sizeof(opus_default_extradata);
                 memcpy(st->codecpar->extradata, opus_default_extradata, sizeof(opus_default_extradata));
 
-                channel_config_code = get8(pp, desc_end);
+                channel_config_code = avpriv_dvb_get8(pp, desc_end);
                 if (channel_config_code < 0)
                     return AVERROR_INVALIDDATA;
                 if (channel_config_code <= 0x8) {
@@ -2029,7 +1966,7 @@ int ff_parse_mpeg2_descriptor(AVFormatContext *fc, AVStream *st, int stream_type
 
             if (desc_len < 1)
                 return AVERROR_INVALIDDATA;
-            flags = get8(pp, desc_end);
+            flags = avpriv_dvb_get8(pp, desc_end);
 
             if ((flags & 0x80) == 0) /* mix_type */
                 st->disposition |= AV_DISPOSITION_DEPENDENT;
@@ -2050,9 +1987,9 @@ int ff_parse_mpeg2_descriptor(AVFormatContext *fc, AVStream *st, int stream_type
             if (flags & 0x01) { /* language_code_present */
                 if (desc_len < 4)
                     return AVERROR_INVALIDDATA;
-                language[0] = get8(pp, desc_end);
-                language[1] = get8(pp, desc_end);
-                language[2] = get8(pp, desc_end);
+                language[0] = avpriv_dvb_get8(pp, desc_end);
+                language[1] = avpriv_dvb_get8(pp, desc_end);
+                language[2] = avpriv_dvb_get8(pp, desc_end);
                 language[3] = 0;
 
                 /* This language always has to override a possible
@@ -2064,9 +2001,9 @@ int ff_parse_mpeg2_descriptor(AVFormatContext *fc, AVStream *st, int stream_type
         break;
     case 0x6a: /* ac-3_descriptor */
         {
-            int component_type_flag = get8(pp, desc_end) & (1 << 7);
+            int component_type_flag = avpriv_dvb_get8(pp, desc_end) & (1 << 7);
             if (component_type_flag) {
-                int component_type = get8(pp, desc_end);
+                int component_type = avpriv_dvb_get8(pp, desc_end);
                 int service_type_mask = 0x38;  // 0b00111000
                 int service_type = ((component_type & service_type_mask) >> 3);
                 if (service_type == 0x02 /* 0b010 */) {
@@ -2078,9 +2015,9 @@ int ff_parse_mpeg2_descriptor(AVFormatContext *fc, AVStream *st, int stream_type
         break;
     case 0x7a: /* enhanced_ac-3_descriptor */
         {
-            int component_type_flag = get8(pp, desc_end) & (1 << 7);
+            int component_type_flag = avpriv_dvb_get8(pp, desc_end) & (1 << 7);
             if (component_type_flag) {
-                int component_type = get8(pp, desc_end);
+                int component_type = avpriv_dvb_get8(pp, desc_end);
                 int service_type_mask = 0x38;  // 0b00111000
                 int service_type = ((component_type & service_type_mask) >> 3);
                 if (service_type == 0x02 /* 0b010 */) {
@@ -2101,7 +2038,7 @@ int ff_parse_mpeg2_descriptor(AVFormatContext *fc, AVStream *st, int stream_type
             // Vol. 3, Section 2, 4.2.8.1
             int actual_component_tag = st->stream_identifier - 1;
             int picked_profile = FF_PROFILE_UNKNOWN;
-            int data_component_id = get16(pp, desc_end);
+            int data_component_id = avpriv_dvb_get16(pp, desc_end);
             if (data_component_id < 0)
                 return AVERROR_INVALIDDATA;
 
@@ -2181,7 +2118,7 @@ static int parse_stream_identifier_desc(const uint8_t *p, const uint8_t *p_end)
     int desc_list_len;
     int desc_len, desc_tag;
 
-    desc_list_len = get16(pp, p_end);
+    desc_list_len = avpriv_dvb_get16(pp, p_end);
     if (desc_list_len < 0)
         return -1;
     desc_list_len &= 0xfff;
@@ -2190,10 +2127,10 @@ static int parse_stream_identifier_desc(const uint8_t *p, const uint8_t *p_end)
         return -1;
 
     while (1) {
-        desc_tag = get8(pp, desc_list_end);
+        desc_tag = avpriv_dvb_get8(pp, desc_list_end);
         if (desc_tag < 0)
             return -1;
-        desc_len = get8(pp, desc_list_end);
+        desc_len = avpriv_dvb_get8(pp, desc_list_end);
         if (desc_len < 0)
             return -1;
         desc_end = *pp + desc_len;
@@ -2201,7 +2138,7 @@ static int parse_stream_identifier_desc(const uint8_t *p, const uint8_t *p_end)
             return -1;
 
         if (desc_tag == 0x52) {
-            return get8(pp, desc_end);
+            return avpriv_dvb_get8(pp, desc_end);
         }
         *pp = desc_end;
     }
@@ -2219,7 +2156,7 @@ static void pmt_cb(MpegTSFilter *filter, const uint8_t *section, int section_len
 {
     MpegTSContext *ts = filter->u.section_filter.opaque;
     MpegTSSectionFilter *tssf = &filter->u.section_filter;
-    SectionHeader h1, *h = &h1;
+    DvbSectionHeader h1, *h = &h1;
     PESContext *pes;
     AVStream *st;
     const uint8_t *p, *p_end, *desc_list_end;
@@ -2237,7 +2174,7 @@ static void pmt_cb(MpegTSFilter *filter, const uint8_t *section, int section_len
 
     p_end = section + section_len - 4;
     p = section;
-    if (parse_section_header(h, &p, p_end) < 0)
+    if (avpriv_dvb_parse_section_header(h, &p, p_end) < 0)
         return;
     if (h->tid != PMT_TID)
         return;
@@ -2255,7 +2192,7 @@ static void pmt_cb(MpegTSFilter *filter, const uint8_t *section, int section_len
     if (!ts->skip_clear)
         clear_program(ts, h->id);
 
-    pcr_pid = get16(&p, p_end);
+    pcr_pid = avpriv_dvb_get16(&p, p_end);
     if (pcr_pid < 0)
         return;
     pcr_pid &= 0x1fff;
@@ -2264,14 +2201,14 @@ static void pmt_cb(MpegTSFilter *filter, const uint8_t *section, int section_len
 
     av_log(ts->stream, AV_LOG_TRACE, "pcr_pid=0x%x\n", pcr_pid);
 
-    program_info_length = get16(&p, p_end);
+    program_info_length = avpriv_dvb_get16(&p, p_end);
     if (program_info_length < 0)
         return;
     program_info_length &= 0xfff;
     while (program_info_length >= 2) {
         uint8_t tag, len;
-        tag = get8(&p, p_end);
-        len = get8(&p, p_end);
+        tag = avpriv_dvb_get8(&p, p_end);
+        len = avpriv_dvb_get8(&p, p_end);
 
         av_log(ts->stream, AV_LOG_TRACE, "program tag: 0x%02x len=%d\n", tag, len);
 
@@ -2280,8 +2217,8 @@ static void pmt_cb(MpegTSFilter *filter, const uint8_t *section, int section_len
             break;
         program_info_length -= len + 2;
         if (tag == 0x1d) { // IOD descriptor
-            get8(&p, p_end); // scope
-            get8(&p, p_end); // label
+            avpriv_dvb_get8(&p, p_end); // scope
+            avpriv_dvb_get8(&p, p_end); // label
             len -= 2;
             mp4_read_iods(ts->stream, p, len, mp4_descr + mp4_descr_count,
                           &mp4_descr_count, MAX_MP4_DESCR_COUNT);
@@ -2305,10 +2242,10 @@ static void pmt_cb(MpegTSFilter *filter, const uint8_t *section, int section_len
     for (i = 0; ; i++) {
         st = 0;
         pes = NULL;
-        stream_type = get8(&p, p_end);
+        stream_type = avpriv_dvb_get8(&p, p_end);
         if (stream_type < 0)
             break;
-        pid = get16(&p, p_end);
+        pid = avpriv_dvb_get16(&p, p_end);
         if (pid < 0)
             goto out;
         pid &= 0x1fff;
@@ -2394,7 +2331,7 @@ static void pmt_cb(MpegTSFilter *filter, const uint8_t *section, int section_len
 
         av_program_add_stream_index(ts->stream, h->id, st->index);
 
-        desc_list_len = get16(&p, p_end);
+        desc_list_len = avpriv_dvb_get16(&p, p_end);
         if (desc_list_len < 0)
             goto out;
         desc_list_len &= 0xfff;
@@ -2429,7 +2366,7 @@ static void pat_cb(MpegTSFilter *filter, const uint8_t *section, int section_len
 {
     MpegTSContext *ts = filter->u.section_filter.opaque;
     MpegTSSectionFilter *tssf = &filter->u.section_filter;
-    SectionHeader h1, *h = &h1;
+    DvbSectionHeader h1, *h = &h1;
     const uint8_t *p, *p_end;
     int sid, pmt_pid;
     AVProgram *program;
@@ -2439,7 +2376,7 @@ static void pat_cb(MpegTSFilter *filter, const uint8_t *section, int section_len
 
     p_end = section + section_len - 4;
     p     = section;
-    if (parse_section_header(h, &p, p_end) < 0)
+    if (avpriv_dvb_parse_section_header(h, &p, p_end) < 0)
         return;
     if (h->tid != PAT_TID)
         return;
@@ -2452,10 +2389,10 @@ static void pat_cb(MpegTSFilter *filter, const uint8_t *section, int section_len
 
     clear_programs(ts);
     for (;;) {
-        sid = get16(&p, p_end);
+        sid = avpriv_dvb_get16(&p, p_end);
         if (sid < 0)
             break;
-        pmt_pid = get16(&p, p_end);
+        pmt_pid = avpriv_dvb_get16(&p, p_end);
         if (pmt_pid < 0)
             break;
         pmt_pid &= 0x1fff;
@@ -2504,7 +2441,7 @@ static void eit_cb(MpegTSFilter *filter, const uint8_t *section, int section_len
 {
     MpegTSContext *ts = filter->u.section_filter.opaque;
     const uint8_t *p, *p_end;
-    SectionHeader h1, *h = &h1;
+    DvbSectionHeader h1, *h = &h1;
 
     /*
      * Sometimes we receive EPG packets but SDT table do not have
@@ -2526,7 +2463,7 @@ static void eit_cb(MpegTSFilter *filter, const uint8_t *section, int section_len
     p_end = section + section_len - 4;
     p     = section;
 
-    if (parse_section_header(h, &p, p_end) < 0)
+    if (avpriv_dvb_parse_section_header(h, &p, p_end) < 0)
         return;
     if (h->tid < EIT_TID || h->tid > OEITS_END_TID)
         return;
@@ -2558,7 +2495,7 @@ static void sdt_cb(MpegTSFilter *filter, const uint8_t *section, int section_len
 {
     MpegTSContext *ts = filter->u.section_filter.opaque;
     MpegTSSectionFilter *tssf = &filter->u.section_filter;
-    SectionHeader h1, *h = &h1;
+    DvbSectionHeader h1, *h = &h1;
     const uint8_t *p, *p_end, *desc_list_end, *desc_end;
     int onid, val, sid, desc_list_len, desc_tag, desc_len, service_type,
         eit_sched, eit_pres_following;
@@ -2569,7 +2506,7 @@ static void sdt_cb(MpegTSFilter *filter, const uint8_t *section, int section_len
 
     p_end = section + section_len - 4;
     p     = section;
-    if (parse_section_header(h, &p, p_end) < 0)
+    if (avpriv_dvb_parse_section_header(h, &p, p_end) < 0)
         return;
     if (h->tid != SDT_TID)
         return;
@@ -2578,17 +2515,17 @@ static void sdt_cb(MpegTSFilter *filter, const uint8_t *section, int section_len
     if (skip_identical(h, tssf))
         return;
 
-    onid = get16(&p, p_end);
+    onid = avpriv_dvb_get16(&p, p_end);
     if (onid < 0)
         return;
-    val = get8(&p, p_end);
+    val = avpriv_dvb_get8(&p, p_end);
     if (val < 0)
         return;
     for (;;) {
-        sid = get16(&p, p_end);
+        sid = avpriv_dvb_get16(&p, p_end);
         if (sid < 0)
             break;
-        val = get8(&p, p_end);
+        val = avpriv_dvb_get8(&p, p_end);
         if (val < 0)
             break;
         eit_sched = (val >> 1) & 0x1;
@@ -2598,7 +2535,7 @@ static void sdt_cb(MpegTSFilter *filter, const uint8_t *section, int section_len
             av_log(ts->stream, AV_LOG_TRACE, "SDT table advertise EIT but no"
                    " packets were received yet.\n");
 
-        desc_list_len = get16(&p, p_end);
+        desc_list_len = avpriv_dvb_get16(&p, p_end);
         if (desc_list_len < 0)
             break;
         desc_list_len &= 0xfff;
@@ -2606,10 +2543,10 @@ static void sdt_cb(MpegTSFilter *filter, const uint8_t *section, int section_len
         if (desc_list_end > p_end)
             break;
         for (;;) {
-            desc_tag = get8(&p, desc_list_end);
+            desc_tag = avpriv_dvb_get8(&p, desc_list_end);
             if (desc_tag < 0)
                 break;
-            desc_len = get8(&p, desc_list_end);
+            desc_len = avpriv_dvb_get8(&p, desc_list_end);
             desc_end = p + desc_len;
             if (desc_len < 0 || desc_end > desc_list_end)
                 break;
@@ -2619,7 +2556,7 @@ static void sdt_cb(MpegTSFilter *filter, const uint8_t *section, int section_len
 
             switch (desc_tag) {
             case 0x48:
-                service_type = get8(&p, p_end);
+                service_type = avpriv_dvb_get8(&p, p_end);
                 if (service_type < 0)
                     break;
                 provider_name = getstr8(&p, p_end);
