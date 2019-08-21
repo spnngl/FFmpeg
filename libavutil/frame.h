@@ -179,6 +179,12 @@ enum AVFrameSideDataType {
      * array element is implied by AVFrameSideData.size / AVRegionOfInterest.self_size.
      */
     AV_FRAME_DATA_REGIONS_OF_INTEREST,
+
+    /**
+     * The data represents the EPGTable structure defined in
+     * libavutil/dvb.h.
+     */
+    AV_FRAME_DATA_EPG_TABLE,
 };
 
 enum AVActiveFormatDescription {
