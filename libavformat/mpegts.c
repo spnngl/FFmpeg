@@ -2489,13 +2489,57 @@ static void pat_cb(MpegTSFilter *filter, const uint8_t *section, int section_len
     }
 }
 
+static void eit_cb(MpegTSFilter *filter, const uint8_t *section, int section_len)
+{
+    MpegTSContext *ts = filter->u.section_filter.opaque;
+    MpegTSSectionFilter *tssf = &filter->u.section_filter;
+    const uint8_t *p, *p_end;
+    SectionHeader h1, *h = &h1;
+    int idx;
+    AVProgram *prg;
+
+    p_end = section + section_len - 4;
+    p     = section;
+
+    if (parse_section_header(h, &p, p_end) < 0)
+        return;
+    if (h->tid < EIT_TID || h->tid > OEITS_END_TID)
+        return;
+    if (ts->skip_changes)
+        return;
+    if (skip_identical(h, tssf))
+        return;
+
+    idx = ff_find_stream_index(ts->stream, filter->pid);
+    if (idx < 0)
+        return;
+
+    /**
+     * In case we receive an EPG packet before mpegts context is fully
+     * initialized.
+     */
+    if (!ts->pkt)
+        return;
+
+    new_data_packet(section, section_len, ts->pkt);
+    ts->pkt->stream_index = idx;
+    prg = av_find_program_from_stream(ts->stream, NULL, idx);
+    if (prg && prg->pcr_pid != -1 && prg->discard != AVDISCARD_ALL) {
+        MpegTSFilter *f = ts->pids[prg->pcr_pid];
+        if (f && f->last_pcr != -1)
+            ts->pkt->pts = ts->pkt->dts = f->last_pcr/300;
+    }
+    ts->stop_parse = 1;
+}
+
 static void sdt_cb(MpegTSFilter *filter, const uint8_t *section, int section_len)
 {
     MpegTSContext *ts = filter->u.section_filter.opaque;
     MpegTSSectionFilter *tssf = &filter->u.section_filter;
     SectionHeader h1, *h = &h1;
     const uint8_t *p, *p_end, *desc_list_end, *desc_end;
-    int onid, val, sid, desc_list_len, desc_tag, desc_len, service_type;
+    int onid, val, sid, desc_list_len, desc_tag, desc_len, service_type,
+        eit_sched, eit_pres_following;
     char *name, *provider_name;
 
     av_log(ts->stream, AV_LOG_TRACE, "SDT:\n");
@@ -2525,6 +2569,27 @@ static void sdt_cb(MpegTSFilter *filter, const uint8_t *section, int section_len
         val = get8(&p, p_end);
         if (val < 0)
             break;
+        eit_sched = (val >> 1) & 0x1;
+        eit_pres_following = val & 0x1;
+
+        if (eit_sched | eit_pres_following) {
+            int idx = ff_find_stream_index(ts->stream, EIT_PID);
+            AVStream *st = (idx >= 0) ? ts->stream->streams[EIT_PID] : NULL;
+
+            if (!st) {
+                st = avformat_new_stream(ts->stream, NULL);
+                if (!st)
+                    return;
+                st->id = EIT_PID;
+                st->program_num = sid;
+                st->codecpar->codec_type = AVMEDIA_TYPE_DATA;
+                st->codecpar->codec_id = AV_CODEC_ID_EPG;
+
+                add_pid_to_pmt(ts, sid, EIT_PID);
+                av_program_add_stream_index(ts->stream, sid, st->index);
+            }
+        }
+
         desc_list_len = get16(&p, p_end);
         if (desc_list_len < 0)
             break;
@@ -2975,8 +3040,8 @@ static int mpegts_read_header(AVFormatContext *s)
         seek_back(s, pb, pos);
 
         mpegts_open_section_filter(ts, SDT_PID, sdt_cb, ts, 1);
-
         mpegts_open_section_filter(ts, PAT_PID, pat_cb, ts, 1);
+        mpegts_open_section_filter(ts, EIT_PID, eit_cb, ts, 1);
 
         handle_packets(ts, probesize / ts->raw_packet_size);
         /* if could not find service, enable auto_guess */
@@ -3233,6 +3298,7 @@ MpegTSContext *avpriv_mpegts_parse_open(AVFormatContext *s)
     ts->auto_guess = 1;
     mpegts_open_section_filter(ts, SDT_PID, sdt_cb, ts, 1);
     mpegts_open_section_filter(ts, PAT_PID, pat_cb, ts, 1);
+    mpegts_open_section_filter(ts, EIT_PID, eit_cb, ts, 1);
 
     return ts;
 }
