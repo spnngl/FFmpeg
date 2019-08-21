@@ -28,5 +28,8 @@ compat/avisynth/windowsPorts/windows2linux.h
 compat/djgpp/math.h
 compat/float/float.h
 compat/float/limits.h
+libavutil/componenttables.h
+libavutil/contenttables.h
+libavutil/linkagetables.h
 Use of av_clip() where av_clip_uintp2() could be used:
 Use of av_clip() where av_clip_intp2() could be used:
