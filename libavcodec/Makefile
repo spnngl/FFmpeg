@@ -300,6 +300,7 @@ OBJS-$(CONFIG_EATQI_DECODER)           += eatqi.o eaidct.o mpeg12.o mpeg12data.o
 OBJS-$(CONFIG_EIGHTBPS_DECODER)        += 8bps.o
 OBJS-$(CONFIG_EIGHTSVX_EXP_DECODER)    += 8svx.o
 OBJS-$(CONFIG_EIGHTSVX_FIB_DECODER)    += 8svx.o
+OBJS-$(CONFIG_EPG_DECODER)             += epgdec.o
 OBJS-$(CONFIG_ESCAPE124_DECODER)       += escape124.o
 OBJS-$(CONFIG_ESCAPE130_DECODER)       += escape130.o
 OBJS-$(CONFIG_EVRC_DECODER)            += evrcdec.o acelp_vectors.o lsp.o
