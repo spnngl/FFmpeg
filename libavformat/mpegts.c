@@ -29,6 +29,7 @@
 #include "libavutil/opt.h"
 #include "libavutil/avassert.h"
 #include "libavutil/dvb.h"
+#include "libavutil/dvbdescriptors.h"
 #include "libavcodec/bytestream.h"
 #include "libavcodec/get_bits.h"
 #include "libavcodec/opus.h"
@@ -2491,6 +2492,152 @@ static void eit_cb(MpegTSFilter *filter, const uint8_t *section, int section_len
     ts->stop_parse = 1;
 }
 
+static void nit_cb(MpegTSFilter *filter, const uint8_t *section, int section_len)
+{
+    MpegTSContext *ts = filter->u.section_filter.opaque;
+    MpegTSSectionFilter *tssf = &filter->u.section_filter;
+    const uint8_t *p, *p_end, *net_desc_end, *ts_loop_end;
+    DvbSectionHeader h1, *h = &h1;
+    int val;
+    NITTable nit;
+    nit.nb_net_desc = 0;
+    nit.descriptors = NULL;
+    nit.nb_subtables = 0;
+    nit.subtables = NULL;
+
+    p_end = section + section_len - 4;
+    p     = section;
+
+    if (avpriv_dvb_parse_section_header(h, &p, p_end) < 0)
+        return;
+    if (h->tid != NIT_TID)
+        return;
+    if (ts->skip_changes)
+        return;
+    if (skip_identical(h, tssf))
+        return;
+
+    nit.h = h1;
+
+    val = avpriv_dvb_get16(&p, p_end);
+    if (val < 0)
+        return;
+    nit.net_desc_len = val & 0xfff;
+
+    net_desc_end = p + nit.net_desc_len;
+    while (p < net_desc_end) {
+        void *data;
+        DvbDescriptor *desc;
+        DvbDescriptorHeader h;
+        const uint8_t *desc_end;
+
+        if (av_dvb_parse_descriptor_header(&h, &p, p_end) < 0)
+            break;
+
+        if (!(desc = (DvbDescriptor*)av_dvb_get_descriptor(&h))) {
+            p += h.len;
+            continue;
+        }
+
+        desc_end = p + h.len;
+        if (desc_end > net_desc_end)
+            break;
+
+        data = desc->parse(desc, &p, desc_end);
+        if (!data)
+            break;
+        memcpy(data, &h, sizeof(h));
+
+        if (av_reallocp_array(&nit.descriptors, (nit.nb_net_desc + 1), sizeof(void*)) < 0) {
+            desc->free(data);
+            break;
+        }
+        nit.descriptors[nit.nb_net_desc++] = data;
+
+        p = desc_end;
+    }
+    p = net_desc_end;
+
+    val = avpriv_dvb_get16(&p, p_end);
+    if (val < 0)
+        return;
+    nit.ts_loop_len = val & 0xfff;
+
+    ts_loop_end = p + nit.ts_loop_len;
+
+    while (p < ts_loop_end) {
+        const uint8_t *desc_list_end;
+        NITSubTable *subtable;
+
+        if (av_reallocp_array(&nit.subtables, (nit.nb_subtables + 1), sizeof(NITSubTable*)) < 0)
+            break;
+
+        nit.subtables[nit.nb_subtables] = av_mallocz(sizeof(NITSubTable));
+        if (!nit.subtables[nit.nb_subtables])
+            break;
+        subtable = nit.subtables[nit.nb_subtables++];
+        subtable->nb_transport_desc = 0;
+        subtable->descriptors = NULL;
+
+        val = avpriv_dvb_get16(&p, ts_loop_end);
+        if (val < 0)
+            break;
+        subtable->ts_id = val;
+
+        val = avpriv_dvb_get16(&p, ts_loop_end);
+        if (val < 0)
+            break;
+        subtable->network_id = val;
+
+        val = avpriv_dvb_get16(&p, ts_loop_end);
+        if (val < 0)
+            break;
+        subtable->transport_desc_len = val & 0xfff;
+
+        desc_list_end = p + subtable->transport_desc_len;
+        while (p < desc_list_end) {
+            void *data;
+            DvbDescriptor *desc;
+            DvbDescriptorHeader h;
+            const uint8_t *desc_end;
+
+            if (av_dvb_parse_descriptor_header(&h, &p, p_end) < 0)
+                break;
+
+            if (!(desc = (DvbDescriptor*)av_dvb_get_descriptor(&h))) {
+                p += h.len;
+                continue;
+            }
+
+            desc_end = p + h.len;
+            if (desc_end > desc_list_end)
+                break;
+
+            data = desc->parse(desc, &p, desc_end);
+            if (!data)
+                break;
+            memcpy(data, &h, sizeof(h));
+
+            if (av_reallocp_array(&subtable->descriptors, (subtable->nb_transport_desc + 1),
+                                  sizeof(void*)) < 0)
+            {
+                desc->free(data);
+                break;
+            }
+            subtable->descriptors[subtable->nb_transport_desc++] = data;
+
+            p = desc_end;
+        }
+    }
+
+    val = avpriv_dvb_get32(&p_end, (p_end + 4));
+    if (val < 0)
+        return;
+    nit.crc = val;
+
+    av_log(NULL, AV_LOG_WARNING, "NIT parsing success !");
+}
+
 static void sdt_cb(MpegTSFilter *filter, const uint8_t *section, int section_len)
 {
     MpegTSContext *ts = filter->u.section_filter.opaque;
@@ -2987,6 +3134,7 @@ static int mpegts_read_header(AVFormatContext *s)
         mpegts_open_section_filter(ts, SDT_PID, sdt_cb, ts, 1);
         mpegts_open_section_filter(ts, PAT_PID, pat_cb, ts, 1);
         mpegts_open_section_filter(ts, EIT_PID, eit_cb, ts, 1);
+        mpegts_open_section_filter(ts, NIT_PID, nit_cb, ts, 1);
 
         handle_packets(ts, probesize / ts->raw_packet_size);
         /* if could not find service, enable auto_guess */
@@ -3245,6 +3393,7 @@ MpegTSContext *avpriv_mpegts_parse_open(AVFormatContext *s)
     mpegts_open_section_filter(ts, SDT_PID, sdt_cb, ts, 1);
     mpegts_open_section_filter(ts, PAT_PID, pat_cb, ts, 1);
     mpegts_open_section_filter(ts, EIT_PID, eit_cb, ts, 1);
+    mpegts_open_section_filter(ts, NIT_PID, nit_cb, ts, 1);
 
     return ts;
 }

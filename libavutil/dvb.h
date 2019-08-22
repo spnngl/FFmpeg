@@ -275,4 +275,32 @@ char* av_epg_duration_to_str(uint8_t duration[3]);
  */
 char* av_epg_running_status(const uint8_t running_status);
 
+typedef struct NITSubTable {
+    uint16_t ts_id;
+    uint16_t network_id;
+    uint8_t reserved_future_use :4;
+    uint16_t transport_desc_len :12;
+    struct {
+        int nb_transport_desc;
+        void **descriptors;
+    };
+} NITSubTable;
+
+typedef struct NITTable {
+    DvbSectionHeader h;
+    uint8_t reserved_future_use0 :4;
+    uint16_t net_desc_len :12;
+    struct {
+        int nb_net_desc;
+        void **descriptors;
+    };
+    uint8_t reserved_future_use1 :4;
+    uint16_t ts_loop_len :12;
+    struct {
+        int nb_subtables;
+        NITSubTable **subtables;
+    };
+    AVCRC crc;
+} NITTable;
+
 #endif  /* AVUTIL_DVB_H */
