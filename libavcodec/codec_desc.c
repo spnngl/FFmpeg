@@ -3204,6 +3204,12 @@ static const AVCodecDescriptor codec_descriptors[] = {
         .long_name = NULL_IF_CONFIG_SMALL("Electronic Program Guide"),
     },
     {
+        .id        = AV_CODEC_ID_NIT,
+        .type      = AVMEDIA_TYPE_DATA,
+        .name      = "nit",
+        .long_name = NULL_IF_CONFIG_SMALL("Network Information Table"),
+    },
+    {
         .id        = AV_CODEC_ID_BINTEXT,
         .type      = AVMEDIA_TYPE_VIDEO,
         .name      = "bintext",
