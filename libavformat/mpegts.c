@@ -169,7 +169,7 @@ struct MpegTSContext {
     MpegTSFilter *pids[NB_PID_MAX];
     int current_pid;
 
-    AVStream *epg_stream;
+    AVStream *epg_stream, *nit_stream;
 };
 
 #define MPEGTS_OPTIONS \
@@ -2426,6 +2426,46 @@ out:
         av_free(mp4_descr[i].dec_config_descr);
 }
 
+static void nit_cb(MpegTSFilter *filter, const uint8_t *section, int section_len)
+{
+    MpegTSContext *ts = filter->u.section_filter.opaque;
+    const uint8_t *p, *p_end;
+    SectionHeader h1, *h = &h1;
+
+    if (!ts->nit_stream) {
+        ts->nit_stream = avformat_new_stream(ts->stream, NULL);
+        if (!ts->nit_stream)
+            return;
+        ts->nit_stream->id = NIT_PID;
+        ts->nit_stream->codecpar->codec_type = AVMEDIA_TYPE_DATA;
+        ts->nit_stream->codecpar->codec_id = AV_CODEC_ID_NIT;
+    }
+
+    if (ts->nit_stream->discard == AVDISCARD_ALL)
+        return;
+
+    p_end = section + section_len - 4;
+    p     = section;
+
+    if (parse_section_header(h, &p, p_end) < 0)
+        return;
+    if (h->tid != NIT_TID && h->tid != ONIT_TID)
+        return;
+
+    av_log(ts->stream, AV_LOG_TRACE, "NIT: tid received = %.02x\n", h->tid);
+
+    /**
+     * In case we receive a packet before mpegts context is fully
+     * initialized.
+     */
+    if (!ts->pkt)
+        return;
+
+    new_data_packet(section, section_len, ts->pkt);
+    ts->pkt->stream_index = ts->nit_stream->index;
+    ts->stop_parse = 1;
+}
+
 static void pat_cb(MpegTSFilter *filter, const uint8_t *section, int section_len)
 {
     MpegTSContext *ts = filter->u.section_filter.opaque;
@@ -2468,6 +2508,7 @@ static void pat_cb(MpegTSFilter *filter, const uint8_t *section, int section_len
 
         if (sid == 0x0000) {
             /* NIT info */
+            // XXX for now we only use default NIT_PID
         } else {
             MpegTSFilter *fil = ts->pids[pmt_pid];
             program = av_new_program(ts->stream, sid);
@@ -3043,6 +3084,7 @@ static int mpegts_read_header(AVFormatContext *s)
         mpegts_open_section_filter(ts, SDT_PID, sdt_cb, ts, 1);
         mpegts_open_section_filter(ts, PAT_PID, pat_cb, ts, 1);
         mpegts_open_section_filter(ts, EIT_PID, eit_cb, ts, 1);
+        mpegts_open_section_filter(ts, NIT_PID, nit_cb, ts, 1);
 
         handle_packets(ts, probesize / ts->raw_packet_size);
         /* if could not find service, enable auto_guess */
@@ -3301,6 +3343,7 @@ MpegTSContext *avpriv_mpegts_parse_open(AVFormatContext *s)
     mpegts_open_section_filter(ts, SDT_PID, sdt_cb, ts, 1);
     mpegts_open_section_filter(ts, PAT_PID, pat_cb, ts, 1);
     mpegts_open_section_filter(ts, EIT_PID, eit_cb, ts, 1);
+    mpegts_open_section_filter(ts, NIT_PID, nit_cb, ts, 1);
 
     return ts;
 }
